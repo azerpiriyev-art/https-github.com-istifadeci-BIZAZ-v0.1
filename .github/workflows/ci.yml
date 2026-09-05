@@ -1,11 +1,97 @@
 name: BIZAZ CI
-on: [push, pull_request]
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bizaz-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  backend:
+  backend-quality:
+    name: Backend syntax and isolated tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
-        with: {python-version: '3.12'}
-      - run: pip install -r backend/requirements.txt
-      - run: PYTHONPATH=backend pytest -q backend/tests
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: Install backend dependencies
+        run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements.txt
+      - name: Compile backend source
+        run: python -m compileall -q backend/app
+      - name: Run isolated health and metadata tests
+        env:
+          PYTHONPATH: backend
+        run: python -m pytest -q backend/tests/test_health.py
+
+  migration-smoke:
+    name: PostgreSQL migration smoke check
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: bizaz_ci
+          POSTGRES_USER: bizaz_ci
+          POSTGRES_PASSWORD: bizaz_ci_password
+        options: >-
+          --health-cmd "pg_isready -U bizaz_ci -d bizaz_ci"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install PostgreSQL client
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
+      - name: Apply foundation migration
+        env:
+          PGPASSWORD: bizaz_ci_password
+        run: psql -h localhost -U bizaz_ci -d bizaz_ci -v ON_ERROR_STOP=1 -f db/migrations/001_foundation.sql
+      - name: Verify required foundation tables
+        env:
+          PGPASSWORD: bizaz_ci_password
+        run: |
+          table_count=$(psql -h localhost -U bizaz_ci -d bizaz_ci -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users', 'companies', 'company_members', 'audit_log');")
+          test "$table_count" = "4"
+
+  frontend-build:
+    name: Frontend production build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+  repository-hygiene:
+    name: Repository hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Reject tracked runtime secrets and generated backup artifacts
+        shell: bash
+        run: |
+          forbidden=$(git ls-files | grep -E '(^|/)(\.env|.*\.(bak|backup|log))$|(^|/)(backups|backup-logs|backup-monitoring)/' || true)
+          test -z "$forbidden" || { echo "$forbidden"; exit 1; }
+      - name: Reject tracked private keys
+        shell: bash
+        run: |
+          if git grep -nE -e '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' -- ':!*.example'; then
+            exit 1
+          fi

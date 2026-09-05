@@ -62,6 +62,8 @@ Acceptance gates:
 
 ### 4.23.2 — CI/CD quality gate
 
+Status: Implemented; first remote GitHub Actions run pending.
+
 Goal: make the existing backend test job a release gate and add checks for Python syntax, frontend build, migration safety, and secret/security hygiene.
 
 Acceptance gates:

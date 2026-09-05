@@ -19,7 +19,7 @@
 | Purchase Orders | 🟢 Implemented | PO CRUD, controlled status transitions, company isolation, and audit acceptance tests exist. | Link to the request/offer flow. |
 | Purchase Requests / Supplier Offers / Comparison | 🔴 Not implemented | No request, offer, comparison, or supplier-selection endpoints are present in the baseline. | 4.23.3. |
 | Payments / Delivery / Reviews / Notifications / KPI | 🔴 Not implemented | MVP scope only; no completed delivery evidence in this baseline. | After the core procurement vertical slice. |
-| Automated Testing / CI | 🟡 Partial | Health tests, PO acceptance tests, and a backend GitHub Actions test job exist. | 4.23.2: complete quality gate. |
+| Automated Testing / CI | 🟡 Implemented, remote verification pending | CI now checks backend syntax/isolated tests, PostgreSQL foundation migration, frontend production build, and repository hygiene. The PO acceptance suite still requires a seeded integration environment. | Confirm the first GitHub Actions run; then make PO fixtures self-contained. |
 | Production Operations & Governance (4.18–4.22.9) | 🟢 PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
 
 ## 4.23.1 synchronization result
