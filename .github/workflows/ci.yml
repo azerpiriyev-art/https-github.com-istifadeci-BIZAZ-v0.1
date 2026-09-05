@@ -37,22 +37,20 @@ jobs:
   migration-smoke:
     name: PostgreSQL migration smoke check
     runs-on: ubuntu-latest
-    services:
-      postgres:
-        image: postgres:16-alpine
-        ports:
-          - 5432:5432
-        env:
-          POSTGRES_DB: bizaz_ci
-          POSTGRES_USER: bizaz_ci
-          POSTGRES_PASSWORD: bizaz_ci_password
-        options: >-
-          --health-cmd "pg_isready -U bizaz_ci -d bizaz_ci"
-          --health-interval 5s
-          --health-timeout 5s
-          --health-retries 10
+
     steps:
       - uses: actions/checkout@v4
+      - name: Start isolated PostgreSQL
+        run: |
+          docker run --detach --name bizaz-ci-postgres --publish 5432:5432 -e POSTGRES_DB=bizaz_ci -e POSTGRES_USER=bizaz_ci -e POSTGRES_PASSWORD=bizaz_ci_password postgres:16-alpine
+          for attempt in {1..30}; do
+            if docker exec bizaz-ci-postgres pg_isready -U bizaz_ci -d bizaz_ci; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker logs bizaz-ci-postgres
+          exit 1
       - name: Install PostgreSQL client
         run: sudo apt-get update && sudo apt-get install --yes postgresql-client
       - name: Apply foundation migration
