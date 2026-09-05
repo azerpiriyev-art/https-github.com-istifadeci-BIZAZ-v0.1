@@ -51,17 +51,11 @@ jobs:
           done
           docker logs bizaz-ci-postgres
           exit 1
-      - name: Install PostgreSQL client
-        run: sudo apt-get update && sudo apt-get install --yes postgresql-client
       - name: Apply foundation migration
-        env:
-          PGPASSWORD: bizaz_ci_password
-        run: psql -h localhost -U bizaz_ci -d bizaz_ci -v ON_ERROR_STOP=1 -f db/migrations/001_foundation.sql
+        run: docker exec -i -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -v ON_ERROR_STOP=1 < db/migrations/001_foundation.sql
       - name: Verify required foundation tables
-        env:
-          PGPASSWORD: bizaz_ci_password
         run: |
-          table_count=$(psql -h localhost -U bizaz_ci -d bizaz_ci -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users', 'companies', 'company_members', 'audit_log');")
+          table_count=$(docker exec -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users', 'companies', 'company_members', 'audit_log');")
           test "$table_count" = "4"
 
   frontend-build:
