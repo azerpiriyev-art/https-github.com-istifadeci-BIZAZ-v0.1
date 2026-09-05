@@ -2083,7 +2083,7 @@ class PurchaseOrderUpdateSchema(BaseModel):
 
 
 class PurchaseOrderListResponseSchema(BaseModel):
-    items: list[PurchaseOrderResponseSchema]
+    items: list["PurchaseOrderResponseSchema"]
     total: int
     page: int
     limit: int
@@ -2113,6 +2113,7 @@ PurchaseOrderItemResponseSchema.model_rebuild()
 PurchaseOrderCreateSchema.model_rebuild()
 PurchaseOrderUpdateSchema.model_rebuild()
 PurchaseOrderResponseSchema.model_rebuild()
+PurchaseOrderListResponseSchema.model_rebuild()
 
 
 
