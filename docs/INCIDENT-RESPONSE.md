@@ -215,13 +215,13 @@ The following capabilities have been operationally tested:
 - RPO validation
 - RTO validation
 
-## 13. Current Governance Gap
+## 13. Version-Controlled Incident and Change History
 
-Git repository/version control is not initialized for the project.
+Git repository/version control is initialized. The approved v0.1 production baseline is:
 
-Therefore version-controlled incident/change history is not yet available.
+`23d0c80` — `chore: establish BIZAZ v0.1 production baseline`
 
-This is a governance gap and must be addressed separately.
+For every SEV-1 or SEV-2 incident, preserve the incident evidence listed in section 9 and record the resulting corrective change in version control when a code, configuration, script, or documentation change is required. Do not treat the baseline commit as evidence of a fresh live health check.
 
 ## 14. Incident Status
 

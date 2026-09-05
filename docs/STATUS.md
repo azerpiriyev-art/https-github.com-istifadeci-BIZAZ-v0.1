@@ -1,20 +1,31 @@
-# BIZAZ Status — 2026-08-31
+# BIZAZ Status — 2026-09-06
 
-| MODUL | STATUS | TEST | PROBLEM | NÖVBƏTİ ADDIM |
-|---|---|---|---|---|
-| Project Foundation | 🟢 Hazır | Static QA + Python compile pass | Runtime dependency install unavailable in sandbox network | Continue v0.2 |
-| Business Model | 🟡 İşlənir | Scope/assumption review pass | Pricing, commission, disputes and legal terms require owner decisions before commercialization | Technicalize model without hard-coded rates |
-| MVP Scope | 🟢 Hazır | Scope consistency review pass | Provider/payment details remain adapter-based | Database expansion |
-| Technical Architecture | 🟢 Hazır | Boundary/stack consistency review pass | Production observability later | Database |
-| Database | 🟢 Hazır | SQL/static structure review pass | Live PostgreSQL migration not executed in this sandbox | Backend domain models |
-| Backend/API | 🟡 İşlənir | Static compile pass; unit runtime blocked by missing installed deps | Environment cannot download packages | Implement domain endpoints |
-| Authentication | 🔴 Başlanmayıb | — | — | JWT + Argon2 + RBAC |
-| Company Management | 🔴 Başlanmayıb | — | — | After Auth |
-| Product & Service Catalog | 🔴 Başlanmayıb | — | — | After Company |
-| Procurement/Tender/Offers | 🔴 Başlanmayıb | — | — | Vertical slice |
-| Orders/Payments/Delivery | 🔴 Başlanmayıb | — | — | Vertical slice |
-| Messaging/Notifications/Reviews | 🔴 Başlanmayıb | — | — | After transaction flow |
-| KPI/Dashboard | 🔴 Başlanmayıb | — | — | After transaction schema |
-| Security | 🟡 İşlənir | Baseline controls embedded | Full threat model/pentest later | Security stage |
-| Automated Testing | 🟡 İşlənir | Static + compile pass | Runtime test suite awaits dependencies/DB | Expand continuously |
-| Deployment | 🔴 Başlanmayıb | — | — | After pilot readiness |
+## Current baseline
+
+- Git baseline: `23d0c80` — `chore: establish BIZAZ v0.1 production baseline`
+- Repository status at synchronization start: clean.
+- API health verified during this synchronization: `status=ok`, `service=bizaz-api`, `version=0.1.0`.
+- Docker/PostgreSQL and Windows scheduled-task status were not re-verified from this sandbox because those host capabilities are unavailable here. Their last approved operating result is recorded in the runbooks; live checks are required before production work.
+
+| MODUL | STATUS | CONFIRMED EVIDENCE | NEXT STEP |
+|---|---|---|---|
+| Project Foundation | 🟢 Ready | Version-controlled production baseline exists. | Maintain change control. |
+| Business Model | 🟡 Defined | Foundation documentation exists; commercial/legal decisions remain owner-gated. | Resolve commercial terms before commercialization. |
+| MVP Scope | 🟢 Defined | Current in-scope and excluded capabilities are documented. | Deliver the next vertical slice. |
+| Technical Architecture / Database | 🟢 Ready | FastAPI, PostgreSQL migration, and domain models are present. | Migration validation in CI. |
+| Authentication / RBAC | 🟢 Implemented | Registration, login, current-user, company membership, and role checks are implemented. | Add CI and integration coverage. |
+| Company Management | 🟢 Implemented | Company creation, lookup, and authorized update endpoints are implemented. | Extend only as required by the request/offer flow. |
+| Product & Supplier Catalog | 🟢 Implemented | Product, price, and supplier CRUD endpoints are implemented with authorization and audit logging. | Validate in CI. |
+| Purchase Orders | 🟢 Implemented | PO CRUD, controlled status transitions, company isolation, and audit acceptance tests exist. | Link to the request/offer flow. |
+| Purchase Requests / Supplier Offers / Comparison | 🔴 Not implemented | No request, offer, comparison, or supplier-selection endpoints are present in the baseline. | 4.23.3. |
+| Payments / Delivery / Reviews / Notifications / KPI | 🔴 Not implemented | MVP scope only; no completed delivery evidence in this baseline. | After the core procurement vertical slice. |
+| Automated Testing / CI | 🟡 Partial | Health tests, PO acceptance tests, and a backend GitHub Actions test job exist. | 4.23.2: complete quality gate. |
+| Production Operations & Governance (4.18–4.22.9) | 🟢 PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
+
+## 4.23.1 synchronization result
+
+PASS when this documentation commit is present and the working tree is clean. The documents now distinguish:
+
+- recorded/approved operational evidence from a fresh live verification;
+- implemented baseline features from MVP-planned features; and
+- completed 4.18–4.22.9 governance work from the 4.23 product-development plan.

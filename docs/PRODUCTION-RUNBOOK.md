@@ -18,6 +18,14 @@ Scope:
 
 ## 2. Current Production Baseline
 
+Documentation synchronization: 2026-09-06
+
+Version-control baseline:
+`23d0c80` — `chore: establish BIZAZ v0.1 production baseline`
+
+Governance status:
+4.22.9 Production Operations & Governance = PASS. This is the last approved operating baseline, not a substitute for the live health checks in section 3 before a change.
+
 Project:
 C:\Projects\BIZAZ-v0.1
 
@@ -59,7 +67,7 @@ Expected:
 
 ## 4. Database Integrity Check
 
-Expected baseline:
+Recorded reference baseline (verify against the live database before using it as an incident comparison):
 
 companies = 4
 suppliers = 2
@@ -279,7 +287,7 @@ PASS
 RTO:
 PASS
 
-Current known governance gap:
-Git repository/version control is not initialized for the project.
+Version control and change-management baseline:
+PASS
 
-This gap must be addressed before treating version-controlled change management as complete.
+The repository is initialized and the approved v0.1 production baseline is commit `23d0c80`. Every subsequent production-relevant change must have a reviewed diff, a documented verification result, and a separate intentional commit.

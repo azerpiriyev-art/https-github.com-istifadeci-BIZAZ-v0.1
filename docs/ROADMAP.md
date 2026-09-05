@@ -1,5 +1,13 @@
 # BIZAZ Roadmap
 
+## Document control
+
+- Current synchronization: 2026-09-06
+- Confirmed version-control baseline: `23d0c80` — `chore: establish BIZAZ v0.1 production baseline`
+- Rule: a stage is complete only with recorded acceptance evidence; a planned capability is not represented as delivered.
+
+## Product roadmap
+
 1. Project Foundation — v0.1
 2. Business Model — v0.2
 3. MVP Scope — v0.3
@@ -26,3 +34,59 @@
 24. Pilot — v0.24
 25. Commercial MVP — v1.0
 26. Post-MVP development — v1.x+
+
+## Completed operational milestones
+
+| Stage | Status | Confirmed outcome |
+|---|---|---|
+| 4.18 | Complete | PostgreSQL backup operations, archive validation, SHA256 evidence, and three backup locations are defined and operationally tested. |
+| 4.19 | Complete | Daily backup scheduling and retention controls are defined in the production runbook. |
+| 4.20 | Complete | Backup monitoring, alert conditions, and a 15-minute monitoring interval are defined and operationally tested. |
+| 4.21 | Complete | Controlled database recovery, isolated DR restore, incident response, RPO, and RTO procedures are documented and tested. |
+| 4.22 | Complete | Production change control, security governance, audit-evidence requirements, and repository hygiene are established. |
+| 4.22.9 | Complete / PASS | Production Operations & Governance final audit closed with version-controlled baseline `23d0c80`. The last recorded operational state is healthy; current live checks remain required before any production change. |
+
+## Next stage — 4.23 Product development
+
+### 4.23.1 — Roadmap & Status Synchronization
+
+Status: Complete / PASS (this document set).
+
+Acceptance gates:
+
+- `ROADMAP.md`, `STATUS.md`, `MVP-SCOPE.md`, `PRODUCTION-RUNBOOK.md`, and `INCIDENT-RESPONSE.md` identify the same production baseline and governance status.
+- The obsolete claim that Git/version control is uninitialized is removed from operational documents.
+- Completed operational stages 4.18–4.22.9 and their evidence boundary are recorded without inventing unverified live results.
+- The next delivery slice and its measurable acceptance gates are defined.
+- Documentation diff passes `git diff --check` and is committed from a clean working tree.
+
+### 4.23.2 — CI/CD quality gate
+
+Goal: make the existing backend test job a release gate and add checks for Python syntax, frontend build, migration safety, and secret/security hygiene.
+
+Acceptance gates:
+
+- Pull requests and pushes run all required checks automatically.
+- Backend tests, frontend production build, and migration validation pass in CI.
+- A failed check blocks the documented release path.
+- No credentials or generated backup artifacts are committed.
+
+### 4.23.3 — Procurement request to supplier offer
+
+Goal: deliver the missing buyer-to-supplier acquisition flow ahead of additional order features.
+
+Acceptance gates:
+
+- An authorized buyer can create, list, view, and update a purchase request within its company boundary.
+- An eligible supplier can submit and revise an offer only for a visible request.
+- Offer comparison and explicit supplier selection are available to the buyer.
+- Authorization, company isolation, validation errors, and audit events have automated coverage.
+- An integration test proves: buyer request → supplier offer → comparison → selection → purchase-order creation.
+
+### 4.23.4 — Frontend integration for the delivered vertical slice
+
+Acceptance gates:
+
+- Authenticated users can complete the 4.23.3 flow in the UI without direct API calls.
+- API errors, loading states, and forbidden actions have usable UI handling.
+- The production frontend build passes and the flow is verified against an integration environment.

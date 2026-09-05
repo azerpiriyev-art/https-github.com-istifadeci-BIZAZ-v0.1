@@ -1,5 +1,13 @@
 # MVP Scope — v0.3 working scope
 
+## Delivery status at 4.23.1
+
+This section records delivery status; it does not expand the MVP scope.
+
+- Implemented baseline: registration/login, company membership/RBAC, company profile, product/supplier catalog primitives, purchase-order lifecycle, and audit logging.
+- Next vertical slice: buyer purchase request → supplier offer → comparison → supplier selection → purchase order.
+- Not yet delivered: purchase requests, supplier offers, offer comparison/selection, payment provider integration, delivery, reviews, notifications, and KPI dashboard.
+
 ## Must-have
 1. Registration/login.
 2. Company profile and membership/RBAC.
@@ -24,4 +32,4 @@
 - Advanced AI procurement automation.
 
 ## Acceptance principle
-A vertical slice is accepted only when buyer and supplier can complete the intended flow in an integration environment and automated regression tests pass.
+A vertical slice is accepted only when buyer and supplier can complete the intended flow in an integration environment, authorization and company isolation are verified, audit events are recorded where required, and automated regression tests pass.
