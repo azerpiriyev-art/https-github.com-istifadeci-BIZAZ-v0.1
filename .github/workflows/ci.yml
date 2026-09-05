@@ -40,6 +40,8 @@ jobs:
     services:
       postgres:
         image: postgres:16-alpine
+        ports:
+          - 5432:5432
         env:
           POSTGRES_DB: bizaz_ci
           POSTGRES_USER: bizaz_ci
