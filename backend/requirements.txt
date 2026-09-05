@@ -8,3 +8,4 @@ psycopg[binary]>=3.2.10,<3.4
 SQLAlchemy==2.0.43
 pytest==8.4.1
 httpx==0.28.1
+email-validator>=2.2,<3
