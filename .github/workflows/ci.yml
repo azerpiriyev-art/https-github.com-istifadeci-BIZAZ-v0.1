@@ -1,4 +1,4 @@
-name: BIZAZ CI
+﻿name: BIZAZ CI
 
 on:
   push:
@@ -30,6 +30,8 @@ jobs:
       - name: Run isolated health and metadata tests
         env:
           PYTHONPATH: backend
+          DATABASE_URL: postgresql+psycopg://bizaz_ci:bizaz_ci_password@127.0.0.1:5432/bizaz_ci
+          JWT_SECRET: ci-test-secret-not-for-production
         run: python -m pytest -q backend/tests/test_health.py
 
   migration-smoke:
