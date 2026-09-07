@@ -1,4 +1,4 @@
-﻿from decimal import Decimal
+from decimal import Decimal
 import uuid
 from datetime import datetime, date, timedelta, timezone
 
@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
-from .models import AuditLog, Company, CompanyMember, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, Supplier, User
+from .models import AuditLog, Company, CompanyMember, OfferSelection, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User
 
 
 # ============================================================
@@ -1970,6 +1970,74 @@ def delete_supplier(
     }
 
 # ============================================================
+# PROCUREMENT SCHEMAS
+# ============================================================
+
+class PurchaseRequestItemCreateSchema(BaseModel):
+    product_id: uuid.UUID
+    quantity: Decimal = Field(gt=0)
+    unit: str = Field(min_length=1, max_length=30)
+    required_date: date | None = None
+    specifications: str | None = Field(default=None, max_length=5000)
+    notes: str | None = Field(default=None, max_length=5000)
+
+
+class PurchaseRequestCreateSchema(BaseModel):
+    request_number: str = Field(min_length=1, max_length=50)
+    request_date: date | None = None
+    status: str = Field(default="DRAFT", pattern="^(DRAFT|SUBMITTED)$")
+    notes: str | None = Field(default=None, max_length=5000)
+    items: list[PurchaseRequestItemCreateSchema] = Field(min_length=1)
+
+
+class SupplierOfferItemCreateSchema(BaseModel):
+    purchase_request_item_id: uuid.UUID
+    product_id: uuid.UUID
+    quantity: Decimal = Field(gt=0)
+    unit: str = Field(min_length=1, max_length=30)
+    unit_price: Decimal = Field(ge=0)
+    vat_rate: Decimal = Field(default=Decimal("18.00"), ge=0, le=100)
+    delivery_days: int | None = Field(default=None, ge=0)
+    notes: str | None = Field(default=None, max_length=5000)
+
+
+class SupplierOfferCreateSchema(BaseModel):
+    purchase_request_id: uuid.UUID
+    supplier_id: uuid.UUID
+    offer_number: str = Field(min_length=1, max_length=50)
+    offer_date: date | None = None
+    valid_until: date | None = None
+    currency: str = Field(default="AZN", min_length=3, max_length=3)
+    status: str = Field(default="DRAFT", pattern="^(DRAFT|SUBMITTED)$")
+    notes: str | None = Field(default=None, max_length=5000)
+    items: list[SupplierOfferItemCreateSchema] = Field(min_length=1)
+
+
+class OfferSelectionCreateSchema(BaseModel):
+    purchase_request_id: uuid.UUID
+    supplier_offer_id: uuid.UUID
+    justification: str = Field(min_length=1, max_length=5000)
+
+
+class ProcurementPurchaseOrderCreateSchema(BaseModel):
+    order_number: str = Field(min_length=1, max_length=50)
+    order_date: date | None = None
+    notes: str | None = Field(default=None, max_length=5000)
+
+
+class ProcurementPurchaseOrderResponseSchema(BaseModel):
+    purchase_order_id: uuid.UUID
+    selection_id: uuid.UUID
+    purchase_request_id: uuid.UUID
+    supplier_offer_id: uuid.UUID
+    supplier_id: uuid.UUID
+    order_number: str
+    status: str
+    currency: str
+    subtotal: Decimal
+    vat_amount: Decimal
+    total_amount: Decimal
+
 # PURCHASE ORDER SCHEMAS
 # ============================================================
 
@@ -2123,6 +2191,473 @@ PurchaseOrderListResponseSchema.model_rebuild()
 # ============================================================
 
 
+# ============================================================
+# PROCUREMENT ? PURCHASE REQUEST CREATE
+# ============================================================
+
+@app.post(
+    "/api/v1/procurement/purchase-requests",
+    tags=["procurement"],
+)
+@limiter.limit("60/minute")
+def create_purchase_request(
+    request: Request,
+    payload: PurchaseRequestCreateSchema,
+    current_user: User = Depends(
+        require_role(
+            "OWNER",
+            "ADMIN",
+            "PROCUREMENT",
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(
+        current_user,
+        db,
+    )
+
+    existing_request = db.scalar(
+        select(PurchaseRequest).where(
+            PurchaseRequest.company_id == membership.company_id,
+            PurchaseRequest.request_number == payload.request_number,
+        )
+    )
+
+    if existing_request:
+        raise HTTPException(
+            status_code=409,
+            detail="Bu sat?nalma sor?usu n?mr?si art?q m?vcuddur.",
+        )
+
+    product_ids = [item.product_id for item in payload.items]
+
+    products = db.scalars(
+        select(Product).where(
+            Product.id.in_(product_ids),
+            Product.company_id == membership.company_id,
+            Product.is_active.is_(True),
+        )
+    ).all()
+
+    product_map = {
+        product.id: product
+        for product in products
+    }
+
+    missing_products = [
+        str(product_id)
+        for product_id in product_ids
+        if product_id not in product_map
+    ]
+
+    if missing_products:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Bir v? ya daha ?ox m?hsul tap?lmad? v? ya bu ?irk?t? aid deyil.",
+                "product_ids": missing_products,
+            },
+        )
+
+    request_date = (
+        payload.request_date
+        if payload.request_date
+        else datetime.now(timezone.utc).date()
+    )
+
+    purchase_request = PurchaseRequest(
+        company_id=membership.company_id,
+        request_number=payload.request_number,
+        request_date=request_date,
+        status=payload.status,
+        requested_by=current_user.id,
+        notes=payload.notes,
+    )
+
+    db.add(purchase_request)
+    db.flush()
+
+    for item in payload.items:
+        db.add(
+            PurchaseRequestItem(
+                purchase_request_id=purchase_request.id,
+                product_id=item.product_id,
+                quantity=item.quantity,
+                unit=item.unit,
+                required_date=item.required_date,
+                specifications=item.specifications,
+                notes=item.notes,
+            )
+        )
+
+    db.add(
+        AuditLog(
+            company_id=membership.company_id,
+            user_id=current_user.id,
+            action="PURCHASE_REQUEST_CREATED",
+            entity_type="PURCHASE_REQUEST",
+            entity_id=purchase_request.id,
+            metadata={
+                "request_number": purchase_request.request_number,
+                "item_count": len(payload.items),
+                "status": purchase_request.status,
+            },
+        )
+    )
+
+    db.commit()
+    db.refresh(purchase_request)
+
+    return {
+        "id": purchase_request.id,
+        "company_id": purchase_request.company_id,
+        "request_number": purchase_request.request_number,
+        "request_date": purchase_request.request_date,
+        "status": purchase_request.status,
+        "requested_by": purchase_request.requested_by,
+        "notes": purchase_request.notes,
+        "items": len(payload.items),
+    }
+
+
+@app.post(
+    "/api/v1/procurement/supplier-offers",
+    tags=["procurement"],
+)
+@limiter.limit("60/minute")
+def create_supplier_offer(
+    request: Request,
+    payload: SupplierOfferCreateSchema,
+    current_user: User = Depends(
+        require_role(
+            "OWNER",
+            "ADMIN",
+            "PROCUREMENT",
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    purchase_request = db.scalar(
+        select(PurchaseRequest).where(
+            PurchaseRequest.id == payload.purchase_request_id,
+            PurchaseRequest.company_id == membership.company_id,
+        )
+    )
+    if purchase_request is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Purchase request not found",
+        )
+
+    if purchase_request.status in {"CLOSED", "CANCELLED"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Purchase request is not eligible for supplier offer",
+        )
+
+    supplier = db.scalar(
+        select(Supplier).where(
+            Supplier.id == payload.supplier_id,
+            Supplier.company_id == membership.company_id,
+            Supplier.is_active.is_(True),
+        )
+    )
+    if supplier is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Active supplier not found",
+        )
+
+    existing_offer = db.scalar(
+        select(SupplierOffer).where(
+            SupplierOffer.company_id == membership.company_id,
+            SupplierOffer.offer_number == payload.offer_number,
+        )
+    )
+    if existing_offer is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Offer number already exists",
+        )
+
+    offer_date = payload.offer_date or date.today()
+
+    if payload.valid_until is not None and payload.valid_until < offer_date:
+        raise HTTPException(
+            status_code=422,
+            detail="valid_until cannot be earlier than offer_date",
+        )
+
+    request_items = db.scalars(
+        select(PurchaseRequestItem).where(
+            PurchaseRequestItem.purchase_request_id
+            == purchase_request.id
+        )
+    ).all()
+
+    request_items_by_id = {
+        item.id: item
+        for item in request_items
+    }
+
+    for item in payload.items:
+        request_item = request_items_by_id.get(
+            item.purchase_request_item_id
+        )
+
+        if request_item is None:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Purchase request item does not belong "
+                    "to the selected purchase request"
+                ),
+            )
+
+        if request_item.product_id != item.product_id:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Offer product does not match "
+                    "purchase request item product"
+                ),
+            )
+
+        if item.quantity > request_item.quantity:
+            raise HTTPException(
+                status_code=422,
+                detail=(
+                    "Offer quantity cannot exceed "
+                    "purchase request quantity"
+                ),
+            )
+
+    supplier_offer = SupplierOffer(
+        company_id=membership.company_id,
+        purchase_request_id=purchase_request.id,
+        supplier_id=supplier.id,
+        offer_number=payload.offer_number,
+        offer_date=offer_date,
+        valid_until=payload.valid_until,
+        currency=payload.currency,
+        status=payload.status,
+        notes=payload.notes,
+    )
+
+    db.add(supplier_offer)
+    db.flush()
+
+    subtotal = Decimal("0")
+    total_vat = Decimal("0")
+    total_amount = Decimal("0")
+
+    for item in payload.items:
+        net_amount = (
+            item.quantity * item.unit_price
+        ).quantize(Decimal("0.0001"))
+
+        vat_amount = (
+            net_amount * item.vat_rate / Decimal("100")
+        ).quantize(Decimal("0.0001"))
+
+        line_total = (
+            net_amount + vat_amount
+        ).quantize(Decimal("0.0001"))
+
+        subtotal += net_amount
+        total_vat += vat_amount
+        total_amount += line_total
+
+        db.add(
+            SupplierOfferItem(
+                supplier_offer_id=supplier_offer.id,
+                purchase_request_item_id=item.purchase_request_item_id,
+                product_id=item.product_id,
+                quantity=item.quantity,
+                unit=item.unit,
+                unit_price=item.unit_price,
+                vat_rate=item.vat_rate,
+                vat_amount=vat_amount,
+                line_total=line_total,
+                delivery_days=item.delivery_days,
+                notes=item.notes,
+            )
+        )
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            company_id=membership.company_id,
+            action="SUPPLIER_OFFER_CREATED",
+            entity_type="SUPPLIER_OFFER",
+            entity_id=supplier_offer.id,
+            log_metadata={
+                "offer_number": supplier_offer.offer_number,
+                "purchase_request_id": str(
+                    supplier_offer.purchase_request_id
+                ),
+                "supplier_id": str(
+                    supplier_offer.supplier_id
+                ),
+                "subtotal": str(subtotal),
+                "vat_amount": str(total_vat),
+                "total_amount": str(total_amount),
+                "items_count": len(payload.items),
+            },
+        )
+    )
+
+    db.commit()
+    db.refresh(supplier_offer)
+
+    return {
+        "id": supplier_offer.id,
+        "company_id": supplier_offer.company_id,
+        "purchase_request_id": supplier_offer.purchase_request_id,
+        "supplier_id": supplier_offer.supplier_id,
+        "offer_number": supplier_offer.offer_number,
+        "offer_date": supplier_offer.offer_date,
+        "valid_until": supplier_offer.valid_until,
+        "currency": supplier_offer.currency,
+        "status": supplier_offer.status,
+        "notes": supplier_offer.notes,
+        "items": len(payload.items),
+        "subtotal": subtotal,
+        "vat_amount": total_vat,
+        "total_amount": total_amount,
+    }
+
+@app.post(
+    "/api/v1/procurement/offer-selections",
+    tags=["procurement"],
+)
+@limiter.limit("60/minute")
+def create_offer_selection(
+    request: Request,
+    payload: OfferSelectionCreateSchema,
+    current_user: User = Depends(
+        require_role(
+            "OWNER",
+            "ADMIN",
+            "PROCUREMENT",
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(
+        current_user,
+        db,
+    )
+
+    purchase_request = db.scalar(
+        select(PurchaseRequest).where(
+            PurchaseRequest.id == payload.purchase_request_id,
+            PurchaseRequest.company_id == membership.company_id,
+        )
+    )
+
+    if purchase_request is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Purchase request not found",
+        )
+
+    if purchase_request.status in {"CLOSED", "CANCELLED"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Purchase request is not eligible for selection",
+        )
+
+    supplier_offer = db.scalar(
+        select(SupplierOffer).where(
+            SupplierOffer.id == payload.supplier_offer_id,
+            SupplierOffer.company_id == membership.company_id,
+        )
+    )
+
+    if supplier_offer is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Supplier offer not found",
+        )
+
+    if supplier_offer.purchase_request_id != purchase_request.id:
+        raise HTTPException(
+            status_code=422,
+            detail="Supplier offer does not belong to the purchase request",
+        )
+
+    if supplier_offer.status != "SUBMITTED":
+        raise HTTPException(
+            status_code=422,
+            detail="Only SUBMITTED supplier offers can be selected",
+        )
+
+    existing_selection = db.scalar(
+        select(OfferSelection).where(
+            OfferSelection.company_id == membership.company_id,
+            OfferSelection.purchase_request_id == purchase_request.id,
+            OfferSelection.status == "SELECTED",
+        )
+    )
+
+    if existing_selection is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="An active selection already exists for this purchase request",
+        )
+
+    selection = OfferSelection(
+        company_id=membership.company_id,
+        purchase_request_id=purchase_request.id,
+        supplier_offer_id=supplier_offer.id,
+        selected_by=current_user.id,
+        justification=payload.justification,
+        status="SELECTED",
+    )
+
+    db.add(selection)
+    db.flush()
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            company_id=membership.company_id,
+            action="SUPPLIER_OFFER_SELECTED",
+            entity_type="OFFER_SELECTION",
+            entity_id=selection.id,
+            log_metadata={
+                "purchase_request_id": str(
+                    purchase_request.id
+                ),
+                "supplier_offer_id": str(
+                    supplier_offer.id
+                ),
+                "justification": payload.justification,
+            },
+        )
+    )
+
+    db.commit()
+    db.refresh(selection)
+
+    return {
+        "id": selection.id,
+        "company_id": selection.company_id,
+        "purchase_request_id": selection.purchase_request_id,
+        "supplier_offer_id": selection.supplier_offer_id,
+        "selected_by": selection.selected_by,
+        "selected_at": selection.selected_at,
+        "status": selection.status,
+        "justification": selection.justification,
+        "purchase_order_id": selection.purchase_order_id,
+        "created_at": selection.created_at,
+        "updated_at": selection.updated_at,
+    }
+
 @app.post(
     "/api/v1/purchase-orders/{purchase_order_id}/status",
     response_model=PurchaseOrderStatusResponseSchema,
@@ -2204,6 +2739,302 @@ def update_purchase_order_status(
     tags=["purchase-orders"],
 )
 @limiter.limit("60/minute")
+@app.post(
+    "/api/v1/procurement/offer-selections/{selection_id}/purchase-order",
+    response_model=ProcurementPurchaseOrderResponseSchema,
+    status_code=201,
+    tags=["procurement"],
+)
+@limiter.limit("60/minute")
+def create_purchase_order_from_selection(
+    request: Request,
+    selection_id: uuid.UUID,
+    payload: ProcurementPurchaseOrderCreateSchema,
+    current_user: User = Depends(
+        require_role(
+            "OWNER",
+            "ADMIN",
+            "PROCUREMENT",
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(
+        current_user,
+        db,
+    )
+
+    selection = db.scalar(
+        select(OfferSelection)
+        .where(
+            OfferSelection.id == selection_id,
+            OfferSelection.company_id == membership.company_id,
+        )
+        .with_for_update()
+    )
+
+    if selection is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Offer selection not found",
+        )
+
+    if selection.status != "SELECTED":
+        raise HTTPException(
+            status_code=422,
+            detail="Only SELECTED offer selections can create purchase orders",
+        )
+
+    if selection.purchase_order_id is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Offer selection already has a purchase order",
+        )
+
+    purchase_request = db.scalar(
+        select(PurchaseRequest).where(
+            PurchaseRequest.id == selection.purchase_request_id,
+            PurchaseRequest.company_id == membership.company_id,
+        )
+    )
+
+    if purchase_request is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Purchase request is not available",
+        )
+
+    if purchase_request.status in {"CLOSED", "CANCELLED"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Purchase request is not eligible for purchase order",
+        )
+
+    supplier_offer = db.scalar(
+        select(SupplierOffer).where(
+            SupplierOffer.id == selection.supplier_offer_id,
+            SupplierOffer.company_id == membership.company_id,
+        )
+    )
+
+    if supplier_offer is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Supplier offer is not available",
+        )
+
+    if supplier_offer.purchase_request_id != purchase_request.id:
+        raise HTTPException(
+            status_code=422,
+            detail="Supplier offer does not belong to the purchase request",
+        )
+
+    if supplier_offer.status != "SUBMITTED":
+        raise HTTPException(
+            status_code=422,
+            detail="Only SUBMITTED supplier offers can create purchase orders",
+        )
+
+    supplier = db.scalar(
+        select(Supplier).where(
+            Supplier.id == supplier_offer.supplier_id,
+            Supplier.company_id == membership.company_id,
+            Supplier.is_active.is_(True),
+        )
+    )
+
+    if supplier is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Supplier is not available or inactive",
+        )
+
+    offer_items = db.scalars(
+        select(SupplierOfferItem).where(
+            SupplierOfferItem.supplier_offer_id == supplier_offer.id
+        )
+    ).all()
+
+    if not offer_items:
+        raise HTTPException(
+            status_code=422,
+            detail="Supplier offer has no items",
+        )
+
+    request_items = db.scalars(
+        select(PurchaseRequestItem).where(
+            PurchaseRequestItem.purchase_request_id
+            == purchase_request.id
+        )
+    ).all()
+
+    request_items_by_id = {
+        item.id: item
+        for item in request_items
+    }
+
+    for offer_item in offer_items:
+        request_item = request_items_by_id.get(
+            offer_item.purchase_request_item_id
+        )
+
+        if request_item is None:
+            raise HTTPException(
+                status_code=422,
+                detail="Supplier offer item does not belong to the purchase request",
+            )
+
+        if offer_item.product_id != request_item.product_id:
+            raise HTTPException(
+                status_code=422,
+                detail="Supplier offer item product does not match purchase request item",
+            )
+
+        if offer_item.quantity > request_item.quantity:
+            raise HTTPException(
+                status_code=422,
+                detail="Supplier offer quantity cannot exceed purchase request quantity",
+            )
+
+    existing_order = db.scalar(
+        select(PurchaseOrder).where(
+            PurchaseOrder.company_id == membership.company_id,
+            PurchaseOrder.order_number == payload.order_number,
+        )
+    )
+
+    if existing_order is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Purchase order number already exists",
+        )
+
+    order_date = (
+        payload.order_date
+        if payload.order_date
+        else datetime.now(timezone.utc).date()
+    )
+
+    purchase_order = PurchaseOrder(
+        company_id=membership.company_id,
+        supplier_id=supplier.id,
+        order_number=payload.order_number,
+        order_date=order_date,
+        status="DRAFT",
+        currency=supplier_offer.currency,
+        notes=payload.notes,
+        subtotal=Decimal("0"),
+        vat_amount=Decimal("0"),
+        total_amount=Decimal("0"),
+    )
+
+    db.add(purchase_order)
+
+    try:
+        db.flush()
+
+        subtotal = Decimal("0")
+        vat_total = Decimal("0")
+
+        for offer_item in offer_items:
+            line_total = (
+                offer_item.quantity
+                * offer_item.unit_price
+            )
+
+            line_vat = (
+                line_total
+                * offer_item.vat_rate
+                / Decimal("100")
+            )
+
+            subtotal += line_total
+            vat_total += line_vat
+
+            db.add(
+                PurchaseOrderItem(
+                    purchase_order_id=purchase_order.id,
+                    product_id=offer_item.product_id,
+                    quantity=offer_item.quantity,
+                    unit=offer_item.unit,
+                    unit_price=offer_item.unit_price,
+                    vat_rate=offer_item.vat_rate,
+                    vat_amount=line_vat,
+                    line_total=line_total,
+                )
+            )
+
+        purchase_order.subtotal = subtotal
+        purchase_order.vat_amount = vat_total
+        purchase_order.total_amount = subtotal + vat_total
+
+        selection.purchase_order_id = purchase_order.id
+
+        db.add(
+            AuditLog(
+                user_id=current_user.id,
+                company_id=membership.company_id,
+                action="PURCHASE_ORDER_CREATED",
+                entity_type="purchase_order",
+                entity_id=purchase_order.id,
+                log_metadata={
+                    "source": "OFFER_SELECTION",
+                    "selection_id": str(selection.id),
+                    "purchase_request_id": str(
+                        purchase_request.id
+                    ),
+                    "supplier_offer_id": str(
+                        supplier_offer.id
+                    ),
+                    "order_number": purchase_order.order_number,
+                    "supplier_id": str(
+                        purchase_order.supplier_id
+                    ),
+                    "subtotal": str(subtotal),
+                    "vat_amount": str(vat_total),
+                    "total_amount": str(
+                        subtotal + vat_total
+                    ),
+                    "items_count": len(offer_items),
+                },
+            )
+        )
+
+        db.commit()
+
+    except IntegrityError:
+        db.rollback()
+
+        existing_order = db.scalar(
+            select(PurchaseOrder).where(
+                PurchaseOrder.company_id == membership.company_id,
+                PurchaseOrder.order_number == payload.order_number,
+            )
+        )
+
+        if existing_order is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Purchase order number already exists",
+            )
+
+        raise
+
+    db.refresh(purchase_order)
+
+    return ProcurementPurchaseOrderResponseSchema(
+        purchase_order_id=purchase_order.id,
+        selection_id=selection.id,
+        purchase_request_id=purchase_request.id,
+        supplier_offer_id=supplier_offer.id,
+        supplier_id=supplier.id,
+        order_number=purchase_order.order_number,
+        status=purchase_order.status,
+        currency=purchase_order.currency,
+        subtotal=purchase_order.subtotal,
+        vat_amount=purchase_order.vat_amount,
+        total_amount=purchase_order.total_amount,
+    )
 def create_purchase_order(
     request: Request,
     payload: PurchaseOrderCreateSchema,
