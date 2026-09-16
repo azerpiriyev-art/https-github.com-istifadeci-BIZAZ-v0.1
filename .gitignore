@@ -20,3 +20,8 @@ backup-monitoring/
 *.bak-*
 *.before-*
 *.backup
+
+# Local audit / recovery artifacts
+main_*_backup.py
+main_before_*.py
+*_diff_check.txt

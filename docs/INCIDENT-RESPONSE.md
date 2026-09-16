@@ -1,4 +1,4 @@
-﻿# BIZAZ Incident Response Runbook
+# BIZAZ Incident Response Runbook
 
 ## 1. Purpose
 

@@ -1,4 +1,4 @@
-﻿import uuid
+import uuid
 import requests
 import pytest
 from app.database import SessionLocal
@@ -77,7 +77,7 @@ def create_po(headers, prefix="PO-4-15"):
         timeout=10,
     )
 
-    assert response.status_code == 200, response.text
+    assert response.status_code == 201, response.text
 
     data = response.json()
 

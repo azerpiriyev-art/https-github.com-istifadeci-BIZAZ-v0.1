@@ -11,7 +11,7 @@ from pwdlib import PasswordHash
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 
@@ -193,7 +193,7 @@ def get_current_user(
     except jwt.InvalidTokenError:
         raise HTTPException(
             status_code=401,
-            detail="Etibars?z token.",
+            detail="Etibarsız token.",
         )
 
     # --------------------------------------------------------
@@ -203,7 +203,7 @@ def get_current_user(
     if payload.get("type") != "access":
         raise HTTPException(
             status_code=401,
-            detail="Etibars?z access token.",
+            detail="Etibarsız access token.",
         )
 
     # --------------------------------------------------------
@@ -215,7 +215,7 @@ def get_current_user(
     if not user_id:
         raise HTTPException(
             status_code=401,
-            detail="Token istifad?ci m?lumat? ehtiva etmir.",
+            detail="Token istifadəçi məlumatı ehtiva etmir.",
         )
 
     # --------------------------------------------------------
@@ -228,7 +228,7 @@ def get_current_user(
     except Exception:
         raise HTTPException(
             status_code=401,
-            detail="Etibars?z istifad?ci identifikatoru.",
+            detail="Etibarsız istifadəçi identifikatoru.",
         )
 
     # --------------------------------------------------------
@@ -359,7 +359,7 @@ def register_company(
     if existing_user:
         raise HTTPException(
             status_code=409,
-            detail="Bu e-poct unvan? art?q qeydiyyatdan kecib.",
+            detail="Bu e-poçt ünvanı artıq qeydiyyatdan keçib.",
         )
 
     # --------------------------------------------------------
@@ -596,7 +596,7 @@ def get_my_company(
     if not membership:
         raise HTTPException(
             status_code=404,
-            detail="Istifad?cinin sirk?t uzvluyu tap?lmad?.",
+            detail="İstifadəçinin şirkət üzvlüyü tapılmadı.",
         )
 
     company = db.get(
@@ -607,7 +607,7 @@ def get_my_company(
     if not company:
         raise HTTPException(
             status_code=404,
-            detail="Sirk?t tap?lmad?.",
+            detail="Şirkət tapılmadı.",
         )
 
     return {
@@ -627,7 +627,7 @@ def get_my_company(
     }
 
 # ============================================================
-# RBAC вЂ” ROLE CHECK
+# RBAC ╨▓╨ВтАЭ ROLE CHECK
 # ============================================================
 
 def require_role(*allowed_roles: str):
@@ -645,20 +645,20 @@ def require_role(*allowed_roles: str):
         if not membership:
             raise HTTPException(
                 status_code=403,
-                detail="Istifad?cinin sirk?t uzvluyu yoxdur.",
+                detail="İstifadəçinin şirkət üzvlüyü yoxdur.",
             )
 
         if membership.role not in allowed_roles:
             raise HTTPException(
                 status_code=403,
-                detail="Bu ?m?liyyat ucun kifay?t q?d?r s?lahiyy?tiniz yoxdur.",
+                detail="Bu əməliyyat üçün kifayət qədər səlahiyyətiniz yoxdur.",
             )
 
         return current_user
 
     return role_checker
 
-# RBAC TEST вЂ” OWNER ONLY
+# RBAC TEST ╨▓╨ВтАЭ OWNER ONLY
 # ============================================================
 
 @app.put(
@@ -712,7 +712,7 @@ def update_my_company(
         if existing_company:
             raise HTTPException(
                 status_code=409,
-                detail="Bu V?EN art?q ba?qa ?irk?t? m?xsusdur.",
+                detail="Bu VÖEN artıq başqa şirkətə məxsusdur.",
             )
 
         changes["tax_id"] = {
@@ -727,7 +727,7 @@ def update_my_company(
         if payload.legal_form not in allowed_forms:
             raise HTTPException(
                 status_code=422,
-                detail="Etibars?z h?quqi forma.",
+                detail="Etibarsız hüquqi forma.",
             )
 
         changes["legal_form"] = {
@@ -775,7 +775,7 @@ def update_my_company(
 
     return {
         "status": "success",
-        "message": "?irk?t m?lumatlar? yenil?ndi.",
+        "message": "Şirkət məlumatları yeniləndi.",
         "company": {
             "id": str(company.id),
             "legal_name": company.legal_name,
@@ -994,7 +994,7 @@ def get_current_membership(
     if not membership:
         raise HTTPException(
             status_code=403,
-            detail="Istifad?cinin sirk?t uzvluyu yoxdur.",
+            detail="İstifadəçinin şirkət üzvlüyü yoxdur.",
         )
 
     return membership
@@ -1016,7 +1016,7 @@ def product_response(product: Product) -> dict:
 
 
 # ============================================================
-# PRODUCT вЂ” LIST
+# PRODUCT ╨▓╨ВтАЭ LIST
 # ============================================================
 
 @app.get(
@@ -1054,7 +1054,7 @@ def list_products(
 
 
 # ============================================================
-# PRODUCT вЂ” CREATE
+# PRODUCT ╨▓╨ВтАЭ CREATE
 # ============================================================
 
 @app.post(
@@ -1096,7 +1096,7 @@ def create_product(
         if existing_product:
             raise HTTPException(
                 status_code=409,
-                detail="Bu SKU art?q sirk?t daxilind? movcuddur.",
+                detail="Bu SKU artıq şirkət daxilində mövcuddur.",
             )
 
     # --------------------------------------------------------
@@ -1147,13 +1147,13 @@ def create_product(
 
     return {
         "status": "success",
-        "message": "M?hsul ugurla yarad?ld?.",
+        "message": "Məhsul uğurla yaradıldı.",
         "product": product_response(product),
     }
 
 
 # ============================================================
-# PRODUCT вЂ” GET ONE
+# PRODUCT ╨▓╨ВтАЭ GET ONE
 # ============================================================
 
 @app.get(
@@ -1183,7 +1183,7 @@ def get_product(
     if not product:
         raise HTTPException(
             status_code=404,
-            detail="M?hsul tap?lmad?.",
+            detail="Məhsul tapılmadı.",
         )
 
     return {
@@ -1193,7 +1193,7 @@ def get_product(
 
 
 # ============================================================
-# PRODUCT вЂ” UPDATE
+# PRODUCT ╨▓╨ВтАЭ UPDATE
 # ============================================================
 
 @app.put(
@@ -1230,7 +1230,7 @@ def update_product(
     if not product:
         raise HTTPException(
             status_code=404,
-            detail="M?hsul tap?lmad?.",
+            detail="Məhsul tapılmadı.",
         )
 
     changes = {}
@@ -1256,7 +1256,7 @@ def update_product(
         if existing_product:
             raise HTTPException(
                 status_code=409,
-                detail="Bu SKU art?q sirk?t daxilind? movcuddur.",
+                detail="Bu SKU artıq şirkət daxilində mövcuddur.",
             )
 
     for field, new_value in updates.items():
@@ -1310,13 +1310,13 @@ def update_product(
 
     return {
         "status": "success",
-        "message": "M?hsul m?lumatlar? yenil?ndi.",
+        "message": "Məhsul məlumatları yeniləndi.",
         "product": product_response(product),
     }
 
 
 # ============================================================
-# PRODUCT вЂ” DELETE
+# PRODUCT ╨▓╨ВтАЭ DELETE
 # ============================================================
 
 @app.delete(
@@ -1352,7 +1352,7 @@ def delete_product(
     if not product:
         raise HTTPException(
             status_code=404,
-            detail="M?hsul tap?lmad?.",
+            detail="Məhsul tapılmadı.",
         )
 
     # --------------------------------------------------------
@@ -1384,7 +1384,7 @@ def delete_product(
 
     return {
         "status": "success",
-        "message": "M?hsul ugurla silindi.",
+        "message": "Məhsul uğurla silindi.",
         "product_id": str(product_id),
     }
 
@@ -1432,7 +1432,7 @@ def create_product_price(
     if not product:
         raise HTTPException(
             status_code=404,
-            detail="MЙ™hsul tapД±lmadД±.",
+            detail="Məhsul tapılmadı.",
         )
 
     price = ProductPrice(
@@ -1506,7 +1506,7 @@ def list_product_prices(
     if not product:
         raise HTTPException(
             status_code=404,
-            detail="MЙ™hsul tapД±lmadД±.",
+            detail="Məhsul tapılmadı.",
         )
 
     prices = db.scalars(
@@ -1560,7 +1560,7 @@ def update_product_price(
     if not price:
         raise HTTPException(
             status_code=404,
-            detail="QiymЙ™t tapД±lmadД±.",
+            detail="Qiymət tapılmadı.",
         )
 
     updates = payload.model_dump(
@@ -1660,7 +1660,7 @@ def delete_product_price(
     if not price:
         raise HTTPException(
             status_code=404,
-            detail="QiymЙ™t tapД±lmadД±.",
+            detail="Qiymət tapılmadı.",
         )
 
     audit = AuditLog(
@@ -1689,7 +1689,7 @@ def delete_product_price(
 
     return {
         "status": "success",
-        "message": "MЙ™hsul qiymЙ™ti silindi.",
+        "message": "Məhsul qiyməti silindi.",
     }
 
 
@@ -1733,7 +1733,7 @@ def create_supplier(
         if existing:
             raise HTTPException(
                 status_code=409,
-                detail="Bu VГ–EN ГјzrЙ™ tЙ™chizatГ§Д± artД±q mГ¶vcuddur.",
+                detail="Bu VÖEN üzrə təchizatçı artıq mövcuddur.",
             )
 
     supplier = Supplier(
@@ -1823,7 +1823,7 @@ def get_supplier(
     if not supplier:
         raise HTTPException(
             status_code=404,
-            detail="TЙ™chizatГ§Д± tapД±lmadД±.",
+            detail="Təchizatçı tapılmadı.",
         )
 
     return supplier
@@ -1860,7 +1860,7 @@ def update_supplier(
     if not supplier:
         raise HTTPException(
             status_code=404,
-            detail="TЙ™chizatГ§Д± tapД±lmadД±.",
+            detail="Təchizatçı tapılmadı.",
         )
 
     updates = payload.model_dump(exclude_unset=True)
@@ -1876,7 +1876,7 @@ def update_supplier(
         if existing:
             raise HTTPException(
                 status_code=409,
-                detail="Bu VГ–EN ГјzrЙ™ baЕџqa tЙ™chizatГ§Д± mГ¶vcuddur.",
+                detail="Bu VÖEN üzrə başqa təchizatçı mövcuddur.",
             )
 
     changes = {}
@@ -1944,7 +1944,7 @@ def delete_supplier(
     if not supplier:
         raise HTTPException(
             status_code=404,
-            detail="TЙ™chizatГ§Д± tapД±lmadД±.",
+            detail="Təchizatçı tapılmadı.",
         )
 
     audit = AuditLog(
@@ -1966,7 +1966,7 @@ def delete_supplier(
 
     return {
         "status": "success",
-        "message": "TЙ™chizatГ§Д± silindi.",
+        "message": "Təchizatçı silindi.",
     }
 
 # ============================================================
@@ -1988,6 +1988,35 @@ class PurchaseRequestCreateSchema(BaseModel):
     status: str = Field(default="DRAFT", pattern="^(DRAFT|SUBMITTED)$")
     notes: str | None = Field(default=None, max_length=5000)
     items: list[PurchaseRequestItemCreateSchema] = Field(min_length=1)
+
+
+class PurchaseRequestItemResponseSchema(BaseModel):
+    id: uuid.UUID
+    purchase_request_id: uuid.UUID
+    product_id: uuid.UUID
+    quantity: Decimal
+    unit: str
+    required_date: date | None
+    specifications: str | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class PurchaseRequestResponseSchema(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    request_number: str
+    request_date: date
+    status: str
+    requested_by: uuid.UUID
+    approved_by: uuid.UUID | None
+    approved_at: datetime | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+    items: list[PurchaseRequestItemResponseSchema]
+
 
 
 class SupplierOfferItemCreateSchema(BaseModel):
@@ -2038,171 +2067,48 @@ class ProcurementPurchaseOrderResponseSchema(BaseModel):
     vat_amount: Decimal
     total_amount: Decimal
 
-# PURCHASE ORDER SCHEMAS
-# ============================================================
-
-class PurchaseOrderItemCreateSchema(BaseModel):
-    product_id: uuid.UUID
-    quantity: Decimal = Field(gt=0)
-    unit: str = Field(
-        default="Й™dЙ™d",
-        min_length=1,
-        max_length=30,
-    )
-    unit_price: Decimal = Field(ge=0)
-    vat_rate: Decimal = Field(
-        default=Decimal("18.00"),
-        ge=0,
-        le=100,
-    )
-
-
-class PurchaseOrderItemUpdateSchema(BaseModel):
-    product_id: uuid.UUID | None = None
-    quantity: Decimal | None = Field(
-        default=None,
-        gt=0,
-    )
-    unit: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=30,
-    )
-    unit_price: Decimal | None = Field(
-        default=None,
-        ge=0,
-    )
-    vat_rate: Decimal | None = Field(
-        default=None,
-        ge=0,
-        le=100,
-    )
-
-
-class PurchaseOrderItemResponseSchema(BaseModel):
-    id: uuid.UUID
-    purchase_order_id: uuid.UUID
-    product_id: uuid.UUID
+class ProcurementComparisonOfferSchema(BaseModel):
+    offer_id: uuid.UUID
+    offer_number: str
+    offer_date: date
+    valid_until: date | None
+    supplier_id: uuid.UUID
+    supplier_name: str
     quantity: Decimal
     unit: str
     unit_price: Decimal
     vat_rate: Decimal
     vat_amount: Decimal
     line_total: Decimal
-    created_at: datetime
-    updated_at: datetime
+    delivery_days: int | None
+    rank: int
 
 
+class ProcurementComparisonItemSchema(BaseModel):
+    request_item_id: uuid.UUID
+    product_id: uuid.UUID
+    product_name: str
+    requested_quantity: Decimal
+    unit: str
+    offers: list[ProcurementComparisonOfferSchema]
 
-class PurchaseOrderStatusUpdateSchema(BaseModel):
-    status: str = Field(
-        pattern="^(DRAFT|SUBMITTED|APPROVED|RECEIVED|CANCELLED)$"
-    )
 
-
-class PurchaseOrderStatusResponseSchema(BaseModel):
+class ProcurementComparisonResponseSchema(BaseModel):
+    purchase_request_id: uuid.UUID
+    request_number: str
+    request_date: date
     status: str
-    message: str
-    id: str
-    order_number: str
-    old_status: str
-    new_status: str
-class PurchaseOrderCreateSchema(BaseModel):
-    supplier_id: uuid.UUID
-    order_number: str = Field(
-        min_length=1,
-        max_length=50,
-    )
-    order_date: date | None = None
-    status: str = Field(
-        default="DRAFT",
-        pattern="^(DRAFT|SUBMITTED|APPROVED|RECEIVED|CANCELLED)$",
-    )
-    currency: str = Field(
-        default="AZN",
-        min_length=3,
-        max_length=3,
-    )
-    notes: str | None = None
-    items: list[PurchaseOrderItemCreateSchema] = Field(
-        min_length=1,
-    )
+    items: list[ProcurementComparisonItemSchema]
 
 
-class PurchaseOrderUpdateSchema(BaseModel):
-    supplier_id: uuid.UUID | None = None
-    order_number: str | None = Field(
-        default=None,
-        min_length=1,
-        max_length=50,
-    )
-    order_date: date | None = None
-    status: str | None = Field(
-        default=None,
-        pattern="^(DRAFT|SUBMITTED|APPROVED|RECEIVED|CANCELLED)$",
-    )
-    currency: str | None = Field(
-        default=None,
-        min_length=3,
-        max_length=3,
-    )
-    notes: str | None = None
-    items: list[PurchaseOrderItemUpdateSchema] | None = None
-
-
-class PurchaseOrderListResponseSchema(BaseModel):
-    items: list["PurchaseOrderResponseSchema"]
-    total: int
-    page: int
-    limit: int
-    pages: int
-
-
-class PurchaseOrderResponseSchema(BaseModel):
-    id: uuid.UUID
-    company_id: uuid.UUID
-    supplier_id: uuid.UUID
-    order_number: str
-    order_date: date
-    status: str
-    currency: str
-    subtotal: Decimal
-    vat_amount: Decimal
-    total_amount: Decimal
-    notes: str | None
-    created_at: datetime
-    updated_at: datetime
-    items: list[PurchaseOrderItemResponseSchema] = []
-
-
-PurchaseOrderItemCreateSchema.model_rebuild()
-PurchaseOrderItemUpdateSchema.model_rebuild()
-PurchaseOrderItemResponseSchema.model_rebuild()
-PurchaseOrderCreateSchema.model_rebuild()
-PurchaseOrderUpdateSchema.model_rebuild()
-PurchaseOrderResponseSchema.model_rebuild()
-PurchaseOrderListResponseSchema.model_rebuild()
-
-
-
-
-# ============================================================
-# PURCHASE ORDER вЂ” CREATE
-# ============================================================
-
-
-# ============================================================
-# PROCUREMENT ? PURCHASE REQUEST CREATE
-# ============================================================
-
-@app.post(
+@app.get(
     "/api/v1/procurement/purchase-requests",
+    response_model=list[PurchaseRequestResponseSchema],
     tags=["procurement"],
 )
 @limiter.limit("60/minute")
-def create_purchase_request(
+def list_purchase_requests(
     request: Request,
-    payload: PurchaseRequestCreateSchema,
     current_user: User = Depends(
         require_role(
             "OWNER",
@@ -2212,113 +2118,131 @@ def create_purchase_request(
     ),
     db: Session = Depends(get_db),
 ):
-    membership = get_current_membership(
-        current_user,
-        db,
-    )
+    membership = get_current_membership(current_user, db)
 
-    existing_request = db.scalar(
-        select(PurchaseRequest).where(
-            PurchaseRequest.company_id == membership.company_id,
-            PurchaseRequest.request_number == payload.request_number,
-        )
-    )
-
-    if existing_request:
-        raise HTTPException(
-            status_code=409,
-            detail="Bu sat?nalma sor?usu n?mr?si art?q m?vcuddur.",
-        )
-
-    product_ids = [item.product_id for item in payload.items]
-
-    products = db.scalars(
-        select(Product).where(
-            Product.id.in_(product_ids),
-            Product.company_id == membership.company_id,
-            Product.is_active.is_(True),
+    purchase_requests = db.scalars(
+        select(PurchaseRequest)
+        .where(PurchaseRequest.company_id == membership.company_id)
+        .order_by(
+            PurchaseRequest.request_date.desc(),
+            PurchaseRequest.created_at.desc(),
         )
     ).all()
 
-    product_map = {
-        product.id: product
-        for product in products
-    }
+    result = []
+    for purchase_request in purchase_requests:
+        items = db.scalars(
+            select(PurchaseRequestItem)
+            .where(
+                PurchaseRequestItem.purchase_request_id == purchase_request.id
+            )
+            .order_by(PurchaseRequestItem.created_at.asc())
+        ).all()
 
-    missing_products = [
-        str(product_id)
-        for product_id in product_ids
-        if product_id not in product_map
-    ]
-
-    if missing_products:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "message": "Bir v? ya daha ?ox m?hsul tap?lmad? v? ya bu ?irk?t? aid deyil.",
-                "product_ids": missing_products,
-            },
+        result.append(
+            PurchaseRequestResponseSchema(
+                id=purchase_request.id,
+                company_id=purchase_request.company_id,
+                request_number=purchase_request.request_number,
+                request_date=purchase_request.request_date,
+                status=purchase_request.status,
+                requested_by=purchase_request.requested_by,
+                approved_by=purchase_request.approved_by,
+                approved_at=purchase_request.approved_at,
+                notes=purchase_request.notes,
+                created_at=purchase_request.created_at,
+                updated_at=purchase_request.updated_at,
+                items=[
+                    PurchaseRequestItemResponseSchema(
+                        id=item.id,
+                        purchase_request_id=item.purchase_request_id,
+                        product_id=item.product_id,
+                        quantity=item.quantity,
+                        unit=item.unit,
+                        required_date=item.required_date,
+                        specifications=item.specifications,
+                        notes=item.notes,
+                        created_at=item.created_at,
+                        updated_at=item.updated_at,
+                    )
+                    for item in items
+                ],
+            )
         )
 
-    request_date = (
-        payload.request_date
-        if payload.request_date
-        else datetime.now(timezone.utc).date()
+    return result
+
+
+@app.get(
+    "/api/v1/procurement/purchase-requests/{request_id}",
+    response_model=PurchaseRequestResponseSchema,
+    tags=["procurement"],
+)
+@limiter.limit("60/minute")
+
+def get_purchase_request(
+    request: Request,
+    request_id: uuid.UUID,
+    current_user: User = Depends(
+        require_role(
+            "OWNER",
+            "ADMIN",
+            "PROCUREMENT",
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    purchase_request = db.scalar(
+        select(PurchaseRequest).where(
+            PurchaseRequest.id == request_id,
+            PurchaseRequest.company_id == membership.company_id,
+        )
     )
 
-    purchase_request = PurchaseRequest(
-        company_id=membership.company_id,
-        request_number=payload.request_number,
-        request_date=request_date,
-        status=payload.status,
-        requested_by=current_user.id,
-        notes=payload.notes,
-    )
+    if not purchase_request:
+        raise HTTPException(
+            status_code=404,
+            detail="Satınalma sorğusu tapılmadı.",
+        )
 
-    db.add(purchase_request)
-    db.flush()
+    items = db.scalars(
+        select(PurchaseRequestItem)
+        .where(
+            PurchaseRequestItem.purchase_request_id == purchase_request.id
+        )
+        .order_by(PurchaseRequestItem.created_at.asc())
+    ).all()
 
-    for item in payload.items:
-        db.add(
-            PurchaseRequestItem(
-                purchase_request_id=purchase_request.id,
+    return PurchaseRequestResponseSchema(
+        id=purchase_request.id,
+        company_id=purchase_request.company_id,
+        request_number=purchase_request.request_number,
+        request_date=purchase_request.request_date,
+        status=purchase_request.status,
+        requested_by=purchase_request.requested_by,
+        approved_by=purchase_request.approved_by,
+        approved_at=purchase_request.approved_at,
+        notes=purchase_request.notes,
+        created_at=purchase_request.created_at,
+        updated_at=purchase_request.updated_at,
+        items=[
+            PurchaseRequestItemResponseSchema(
+                id=item.id,
+                purchase_request_id=item.purchase_request_id,
                 product_id=item.product_id,
                 quantity=item.quantity,
                 unit=item.unit,
                 required_date=item.required_date,
                 specifications=item.specifications,
                 notes=item.notes,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
             )
-        )
-
-    db.add(
-        AuditLog(
-            company_id=membership.company_id,
-            user_id=current_user.id,
-            action="PURCHASE_REQUEST_CREATED",
-            entity_type="PURCHASE_REQUEST",
-            entity_id=purchase_request.id,
-            metadata={
-                "request_number": purchase_request.request_number,
-                "item_count": len(payload.items),
-                "status": purchase_request.status,
-            },
-        )
+            for item in items
+        ],
     )
-
-    db.commit()
-    db.refresh(purchase_request)
-
-    return {
-        "id": purchase_request.id,
-        "company_id": purchase_request.company_id,
-        "request_number": purchase_request.request_number,
-        "request_date": purchase_request.request_date,
-        "status": purchase_request.status,
-        "requested_by": purchase_request.requested_by,
-        "notes": purchase_request.notes,
-        "items": len(payload.items),
-    }
 
 
 @app.post(
@@ -2510,8 +2434,12 @@ def create_supplier_offer(
         )
     )
 
-    db.commit()
-    db.refresh(supplier_offer)
+    try:
+        db.commit()
+        db.refresh(supplier_offer)
+    except DataError:
+        db.rollback()
+        raise HTTPException(status_code=422, detail="Supplier offer amount exceeds the supported numeric range")
 
     return {
         "id": supplier_offer.id,
@@ -2658,6 +2586,472 @@ def create_offer_selection(
         "updated_at": selection.updated_at,
     }
 
+
+@app.get(
+    "/api/v1/procurement/purchase-requests/{request_id}/comparison",
+    response_model=ProcurementComparisonResponseSchema,
+    tags=["procurement"],
+)
+@limiter.limit("60/minute")
+def get_purchase_request_comparison(
+    request: Request,
+    request_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    purchase_request = db.scalar(
+        select(PurchaseRequest).where(
+            PurchaseRequest.id == request_id,
+            PurchaseRequest.company_id == membership.company_id,
+        )
+    )
+
+    if purchase_request is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Purchase request not found",
+        )
+
+    if purchase_request.status in {"CLOSED", "CANCELLED"}:
+        raise HTTPException(
+            status_code=422,
+            detail="Purchase request is not eligible for comparison",
+        )
+
+    request_items = db.scalars(
+        select(PurchaseRequestItem)
+        .where(
+            PurchaseRequestItem.purchase_request_id == purchase_request.id
+        )
+        .order_by(PurchaseRequestItem.id)
+    ).all()
+
+    submitted_offers = db.scalars(
+        select(SupplierOffer).where(
+            SupplierOffer.purchase_request_id == purchase_request.id,
+            SupplierOffer.company_id == membership.company_id,
+            SupplierOffer.status == "SUBMITTED",
+        )
+    ).all()
+
+    offer_ids = [offer.id for offer in submitted_offers]
+    offer_items = []
+
+    if offer_ids:
+        offer_items = db.scalars(
+            select(SupplierOfferItem).where(
+                SupplierOfferItem.supplier_offer_id.in_(offer_ids)
+            )
+        ).all()
+
+    supplier_ids = {offer.supplier_id for offer in submitted_offers}
+    product_ids = {item.product_id for item in request_items}
+
+    suppliers = {}
+
+    if supplier_ids:
+        suppliers = {
+            supplier.id: supplier
+            for supplier in db.scalars(
+                select(Supplier).where(
+                    Supplier.id.in_(supplier_ids),
+                    Supplier.company_id == membership.company_id,
+                )
+            ).all()
+        }
+
+    products = {}
+
+    if product_ids:
+        products = {
+            product.id: product
+            for product in db.scalars(
+                select(Product).where(
+                    Product.id.in_(product_ids),
+                    Product.company_id == membership.company_id,
+                )
+            ).all()
+        }
+
+    offers_by_id = {
+        offer.id: offer
+        for offer in submitted_offers
+    }
+
+    items_by_request_item = {}
+
+    for offer_item in offer_items:
+        items_by_request_item.setdefault(
+            offer_item.purchase_request_item_id,
+            [],
+        ).append(offer_item)
+
+    comparison_items = []
+
+    for request_item in request_items:
+        product = products.get(request_item.product_id)
+        comparison_offers = []
+
+        for offer_item in items_by_request_item.get(request_item.id, []):
+            offer = offers_by_id.get(offer_item.supplier_offer_id)
+
+            if offer is None:
+                continue
+
+            supplier = suppliers.get(offer.supplier_id)
+
+            if supplier is None or product is None:
+                continue
+
+            net_amount = (
+                offer_item.quantity * offer_item.unit_price
+            ).quantize(Decimal("0.01"))
+
+            vat_amount = (
+                net_amount * offer_item.vat_rate / Decimal("100")
+            ).quantize(Decimal("0.01"))
+
+            line_total = (
+                net_amount + vat_amount
+            ).quantize(Decimal("0.01"))
+
+            comparison_offers.append(
+                {
+                    "offer_id": offer.id,
+                    "offer_number": offer.offer_number,
+                    "offer_date": offer.offer_date,
+                    "valid_until": offer.valid_until,
+                    "supplier_id": supplier.id,
+                    "supplier_name": supplier.name,
+                    "quantity": offer_item.quantity,
+                    "unit": offer_item.unit,
+                    "unit_price": offer_item.unit_price,
+                    "vat_rate": offer_item.vat_rate,
+                    "vat_amount": vat_amount,
+                    "line_total": line_total,
+                    "delivery_days": offer_item.delivery_days,
+                    "rank": 0,
+                }
+            )
+
+        comparison_offers.sort(
+            key=lambda item: (
+                item["line_total"],
+                item["delivery_days"]
+                if item["delivery_days"] is not None
+                else 10**9,
+                item["offer_date"],
+            )
+        )
+
+        for rank, offer in enumerate(comparison_offers, start=1):
+            offer["rank"] = rank
+
+        comparison_items.append(
+            {
+                "request_item_id": request_item.id,
+                "product_id": request_item.product_id,
+                "product_name": product.name if product else "Unknown",
+                "requested_quantity": request_item.quantity,
+                "unit": request_item.unit,
+                "offers": comparison_offers,
+            }
+        )
+
+    return {
+        "purchase_request_id": purchase_request.id,
+        "request_number": purchase_request.request_number,
+        "request_date": purchase_request.request_date,
+        "status": purchase_request.status,
+        "items": comparison_items,
+    }
+
+
+# PURCHASE ORDER SCHEMAS
+# ============================================================
+
+class PurchaseOrderItemCreateSchema(BaseModel):
+    product_id: uuid.UUID
+    quantity: Decimal = Field(gt=0)
+    unit: str = Field(
+        default="╨ЩтДвd╨ЩтДвd",
+        min_length=1,
+        max_length=30,
+    )
+    unit_price: Decimal = Field(ge=0)
+    vat_rate: Decimal = Field(
+        default=Decimal("18.00"),
+        ge=0,
+        le=100,
+    )
+
+
+class PurchaseOrderItemUpdateSchema(BaseModel):
+    product_id: uuid.UUID | None = None
+    quantity: Decimal | None = Field(
+        default=None,
+        gt=0,
+    )
+    unit: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=30,
+    )
+    unit_price: Decimal | None = Field(
+        default=None,
+        ge=0,
+    )
+    vat_rate: Decimal | None = Field(
+        default=None,
+        ge=0,
+        le=100,
+    )
+
+
+class PurchaseOrderItemResponseSchema(BaseModel):
+    id: uuid.UUID
+    purchase_order_id: uuid.UUID
+    product_id: uuid.UUID
+    quantity: Decimal
+    unit: str
+    unit_price: Decimal
+    vat_rate: Decimal
+    vat_amount: Decimal
+    line_total: Decimal
+    created_at: datetime
+    updated_at: datetime
+
+
+
+class PurchaseOrderStatusUpdateSchema(BaseModel):
+    status: str = Field(
+        pattern="^(DRAFT|SUBMITTED|APPROVED|RECEIVED|CANCELLED)$"
+    )
+
+
+class PurchaseOrderStatusResponseSchema(BaseModel):
+    status: str
+    message: str
+    id: str
+    order_number: str
+    old_status: str
+    new_status: str
+class PurchaseOrderCreateSchema(BaseModel):
+    supplier_id: uuid.UUID
+    order_number: str = Field(
+        min_length=1,
+        max_length=50,
+    )
+    order_date: date | None = None
+    status: str = Field(
+        default="DRAFT",
+        pattern="^(DRAFT|SUBMITTED|APPROVED|RECEIVED|CANCELLED)$",
+    )
+    currency: str = Field(
+        default="AZN",
+        min_length=3,
+        max_length=3,
+    )
+    notes: str | None = None
+    items: list[PurchaseOrderItemCreateSchema] = Field(
+        min_length=1,
+    )
+
+
+class PurchaseOrderUpdateSchema(BaseModel):
+    supplier_id: uuid.UUID | None = None
+    order_number: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=50,
+    )
+    order_date: date | None = None
+    status: str | None = Field(
+        default=None,
+        pattern="^(DRAFT|SUBMITTED|APPROVED|RECEIVED|CANCELLED)$",
+    )
+    currency: str | None = Field(
+        default=None,
+        min_length=3,
+        max_length=3,
+    )
+    notes: str | None = None
+    items: list[PurchaseOrderItemUpdateSchema] | None = None
+
+
+class PurchaseOrderListResponseSchema(BaseModel):
+    items: list["PurchaseOrderResponseSchema"]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+
+class PurchaseOrderResponseSchema(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    supplier_id: uuid.UUID
+    order_number: str
+    order_date: date
+    status: str
+    currency: str
+    subtotal: Decimal
+    vat_amount: Decimal
+    total_amount: Decimal
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+    items: list[PurchaseOrderItemResponseSchema] = []
+
+
+PurchaseOrderItemCreateSchema.model_rebuild()
+PurchaseOrderItemUpdateSchema.model_rebuild()
+PurchaseOrderItemResponseSchema.model_rebuild()
+PurchaseOrderCreateSchema.model_rebuild()
+PurchaseOrderUpdateSchema.model_rebuild()
+PurchaseOrderResponseSchema.model_rebuild()
+PurchaseOrderListResponseSchema.model_rebuild()
+
+
+
+
+# ============================================================
+# PURCHASE ORDER ╨▓╨ВтАЭ CREATE
+# ============================================================
+
+
+# ============================================================
+# PROCUREMENT ? PURCHASE REQUEST CREATE
+# ============================================================
+
+@app.post(
+    "/api/v1/procurement/purchase-requests",
+    tags=["procurement"],
+)
+@limiter.limit("60/minute")
+def create_purchase_request(
+    request: Request,
+    payload: PurchaseRequestCreateSchema,
+    current_user: User = Depends(
+        require_role(
+            "OWNER",
+            "ADMIN",
+            "PROCUREMENT",
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(
+        current_user,
+        db,
+    )
+
+    existing_request = db.scalar(
+        select(PurchaseRequest).where(
+            PurchaseRequest.company_id == membership.company_id,
+            PurchaseRequest.request_number == payload.request_number,
+        )
+    )
+
+    if existing_request:
+        raise HTTPException(
+            status_code=409,
+            detail="Bu satınalma sorğusu nömrəsi artıq mövcuddur.",
+        )
+
+    product_ids = [item.product_id for item in payload.items]
+
+    products = db.scalars(
+        select(Product).where(
+            Product.id.in_(product_ids),
+            Product.company_id == membership.company_id,
+            Product.is_active.is_(True),
+        )
+    ).all()
+
+    product_map = {
+        product.id: product
+        for product in products
+    }
+
+    missing_products = [
+        str(product_id)
+        for product_id in product_ids
+        if product_id not in product_map
+    ]
+
+    if missing_products:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Bir və ya daha çox məhsul tapılmadı və ya bu şirkətə aid deyil.",
+                "product_ids": missing_products,
+            },
+        )
+
+    request_date = (
+        payload.request_date
+        if payload.request_date
+        else datetime.now(timezone.utc).date()
+    )
+
+    purchase_request = PurchaseRequest(
+        company_id=membership.company_id,
+        request_number=payload.request_number,
+        request_date=request_date,
+        status=payload.status,
+        requested_by=current_user.id,
+        notes=payload.notes,
+    )
+
+    db.add(purchase_request)
+    db.flush()
+
+    for item in payload.items:
+        db.add(
+            PurchaseRequestItem(
+                purchase_request_id=purchase_request.id,
+                product_id=item.product_id,
+                quantity=item.quantity,
+                unit=item.unit,
+                required_date=item.required_date,
+                specifications=item.specifications,
+                notes=item.notes,
+            )
+        )
+
+    db.add(
+        AuditLog(
+            company_id=membership.company_id,
+            user_id=current_user.id,
+            action="PURCHASE_REQUEST_CREATED",
+            entity_type="PURCHASE_REQUEST",
+            entity_id=purchase_request.id,
+            metadata={
+                "request_number": purchase_request.request_number,
+                "item_count": len(payload.items),
+                "status": purchase_request.status,
+            },
+        )
+    )
+
+    db.commit()
+    db.refresh(purchase_request)
+
+    return {
+        "id": purchase_request.id,
+        "company_id": purchase_request.company_id,
+        "request_number": purchase_request.request_number,
+        "request_date": purchase_request.request_date,
+        "status": purchase_request.status,
+        "requested_by": purchase_request.requested_by,
+        "notes": purchase_request.notes,
+        "items": len(payload.items),
+    }
+
+
 @app.post(
     "/api/v1/purchase-orders/{purchase_order_id}/status",
     response_model=PurchaseOrderStatusResponseSchema,
@@ -2676,7 +3070,7 @@ def update_purchase_order_status(
     if membership.role not in ("OWNER", "ADMIN", "PROCUREMENT"):
         raise HTTPException(
             status_code=403,
-            detail="Bu Й™mЙ™liyyat ГјГ§Гјn kifayЙ™t qЙ™dЙ™r sЙ™lahiyyЙ™tiniz yoxdur.",
+            detail="Bu əməliyyat üçün kifayət qədər səlahiyyətiniz yoxdur.",
         )
 
     purchase_order = db.scalar(
@@ -2689,7 +3083,7 @@ def update_purchase_order_status(
     if not purchase_order:
         raise HTTPException(
             status_code=404,
-            detail="Purchase Order tapД±lmadД±",
+            detail="Purchase Order tapılmadı.",
         )
 
     current_status = purchase_order.status
@@ -2706,7 +3100,7 @@ def update_purchase_order_status(
     if new_status not in allowed_transitions.get(current_status, set()):
         raise HTTPException(
             status_code=400,
-            detail=f"YanlД±Еџ status keГ§idi: {current_status} -> {new_status}",
+            detail=f"Yanlış status keçidi: {current_status} -> {new_status}",
         )
 
     purchase_order.status = new_status
@@ -2727,18 +3121,13 @@ def update_purchase_order_status(
 
     return {
         "status": "success",
-        "message": "Purchase Order statusu dЙ™yiЕџdirildi.",
+        "message": "Purchase Order statusu dəyişdirildi.",
         "id": str(purchase_order.id),
         "order_number": purchase_order.order_number,
         "old_status": current_status,
         "new_status": purchase_order.status,
     }
-@app.post(
-    "/api/v1/purchase-orders",
-    response_model=PurchaseOrderResponseSchema,
-    tags=["purchase-orders"],
-)
-@limiter.limit("60/minute")
+
 @app.post(
     "/api/v1/procurement/offer-selections/{selection_id}/purchase-order",
     response_model=ProcurementPurchaseOrderResponseSchema,
@@ -3035,6 +3424,8 @@ def create_purchase_order_from_selection(
         vat_amount=purchase_order.vat_amount,
         total_amount=purchase_order.total_amount,
     )
+@app.post('/api/v1/purchase-orders', response_model=PurchaseOrderResponseSchema, status_code=201, tags=['purchase-orders'])
+@limiter.limit('60/minute')
 def create_purchase_order(
     request: Request,
     payload: PurchaseOrderCreateSchema,
@@ -3054,7 +3445,7 @@ def create_purchase_order(
     )
 
     # --------------------------------------------------------
-    # Supplier вЂ” company isolation
+    # Supplier ╨▓╨ВтАЭ company isolation
     # --------------------------------------------------------
 
     supplier = db.scalar(
@@ -3068,11 +3459,11 @@ def create_purchase_order(
     if not supplier:
         raise HTTPException(
             status_code=404,
-            detail="T?chizat?? tap?lmad? v? ya bu ?irk?t? aid deyil.",
+            detail="Təchizatçı tapılmadı və ya bu şirkətə aid deyil.",
         )
 
     # --------------------------------------------------------
-    # Order number uniqueness вЂ” company isolation
+    # Order number uniqueness ╨▓╨ВтАЭ company isolation
     # --------------------------------------------------------
 
     existing_order = db.scalar(
@@ -3085,7 +3476,7 @@ def create_purchase_order(
     if existing_order:
         raise HTTPException(
             status_code=409,
-            detail="Bu sifari? n?mr?si art?q m?vcuddur.",
+            detail="Bu sifariş nömrəsi artıq mövcuddur.",
         )
 
     # --------------------------------------------------------
@@ -3117,7 +3508,7 @@ def create_purchase_order(
         raise HTTPException(
             status_code=404,
             detail={
-                "message": "Bir v? ya daha ?ox m?hsul tap?lmad? v? ya bu ?irk?t? aid deyil.",
+                "message": "Bir və ya daha çox məhsul tapılmadı və ya bu şirkətə aid deyil.",
                 "product_ids": missing_products,
             },
         )
@@ -3158,7 +3549,7 @@ def create_purchase_order(
         if existing_order:
             raise HTTPException(
                 status_code=409,
-                detail="Bu sifariЕџ nГ¶mrЙ™si artД±q mГ¶vcuddur.",
+                detail="Bu sifariş nömrəsi artıq mövcuddur.",
             )
 
         raise
@@ -3287,7 +3678,7 @@ def delete_purchase_order(
     if membership.role not in ("OWNER", "ADMIN", "PROCUREMENT"):
         raise HTTPException(
             status_code=403,
-            detail="Bu Й™mЙ™liyyat ГјГ§Гјn kifayЙ™t qЙ™dЙ™r sЙ™lahiyyЙ™tiniz yoxdur.",
+            detail="Bu əməliyyat üçün kifayət qədər səlahiyyətiniz yoxdur.",
         )
 
     purchase_order = db.scalar(
@@ -3300,12 +3691,12 @@ def delete_purchase_order(
     if not purchase_order:
         raise HTTPException(
             status_code=404,
-            detail="Purchase Order tapД±lmadД±",
+            detail="Purchase Order tapılmadı.",
         )
     if purchase_order.status != "DRAFT":
         raise HTTPException(
             status_code=400,
-            detail=f"{purchase_order.status} statuslu Purchase Order silinЙ™ bilmЙ™z.",
+            detail=f"{purchase_order.status} statuslu Purchase Order silinə bilməz.",
         )
 
     deleted_order_id = purchase_order.id
@@ -3357,13 +3748,13 @@ def update_purchase_order(
     if not purchase_order:
         raise HTTPException(
             status_code=404,
-            detail="Purchase Order tapД±lmadД±",
+            detail="Purchase Order tapılmadı.",
         )
 
     if purchase_order.status != "DRAFT":
         raise HTTPException(
             status_code=400,
-            detail=f"{purchase_order.status} statuslu Purchase Order dЙ™yiЕџdirilЙ™ bilmЙ™z.",
+            detail=f"{purchase_order.status} statuslu Purchase Order dəyişdirilə bilməz.",
         )
     if payload.supplier_id is not None:
         supplier = db.scalar(
@@ -3377,7 +3768,7 @@ def update_purchase_order(
         if not supplier:
             raise HTTPException(
                 status_code=400,
-                detail="TЙ™chizatГ§Д± tapД±lmadД± vЙ™ ya bu ЕџirkЙ™tЙ™ aid deyil",
+                detail="Təchizatçı tapılmadı və ya bu şirkətə aid deyil",
             )
 
         purchase_order.supplier_id = payload.supplier_id
@@ -3394,7 +3785,7 @@ def update_purchase_order(
         if duplicate:
             raise HTTPException(
                 status_code=409,
-                detail="Bu order number artД±q mГ¶vcuddur",
+                detail="Bu order number artıq mövcuddur",
             )
 
         purchase_order.order_number = payload.order_number
@@ -3405,7 +3796,7 @@ def update_purchase_order(
     if payload.status is not None:
         raise HTTPException(
             status_code=400,
-            detail="Purchase Order statusu yalnД±z /status endpointi vasitЙ™silЙ™ dЙ™yiЕџdirilЙ™ bilЙ™r.",
+            detail="Purchase Order statusu yalnız /status endpointi vasitəsilə dəyişdirilə bilər.",
         )
 
     if payload.currency is not None:
@@ -3441,7 +3832,7 @@ def update_purchase_order(
             if not product:
                 raise HTTPException(
                     status_code=400,
-                    detail="MЙ™hsul tapД±lmadД± vЙ™ ya bu ЕџirkЙ™tЙ™ aid deyil",
+                    detail="Məhsul tapılmadı və ya bu şirkətə aid deyil",
                 )
 
             line_total = (
@@ -3533,7 +3924,7 @@ def update_purchase_order(
         ],
     )
 # ============================================================
-# PURCHASE ORDER вЂ” GET LIST
+# PURCHASE ORDER ╨▓╨ВтАЭ GET LIST
 # ============================================================
 
 @app.get(
@@ -3657,7 +4048,7 @@ def get_purchase_order(
     if not purchase_order:
         raise HTTPException(
             status_code=404,
-            detail="Purchase Order tapД±lmadД±",
+            detail="Purchase Order tapılmadı.",
         )
 
     items = db.scalars(

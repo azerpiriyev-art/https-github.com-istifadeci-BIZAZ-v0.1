@@ -1,4 +1,4 @@
-﻿BEGIN;
+BEGIN;
 
 CREATE TABLE IF NOT EXISTS purchase_requests (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

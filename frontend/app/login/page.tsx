@@ -34,26 +34,31 @@ export default function LoginPage() {
       const data = await res.json();
 
       if (!res.ok) {
-        setResponseMsg(
-          data.detail || "E-poçt və ya şifrə yanlışdır."
-        );
+        const detail =
+          typeof data.detail === "string"
+            ? data.detail
+            : "E-poçt və ya şifrə yanlışdır.";
+
+        setResponseMsg(`Login xətası (${res.status}): ${detail}`);
+        return;
+      }
+
+      if (!data.token) {
+        setResponseMsg("Login uğurludur, lakin token cavabda yoxdur.");
         return;
       }
 
       localStorage.setItem("bizaz_token", data.token);
 
-      setResponseMsg(
-        "Uğurla daxil oldunuz! Dashboard açılır..."
-      );
+      setResponseMsg("Uğurla daxil oldunuz! Dashboard açılır...");
 
       setTimeout(() => {
         router.push("/dashboard");
       }, 500);
     } catch (error) {
       console.error(error);
-
       setResponseMsg(
-        "Serverlə əlaqə saxlamaq mümkün olmadı."
+        "Serverlə əlaqə saxlamaq mümkün olmadı. Backend-in işlədiyini yoxlayın."
       );
     } finally {
       setLoading(false);
@@ -81,21 +86,11 @@ export default function LoginPage() {
           boxShadow: "0 4px 20px rgba(0,0,0,0.08)",
         }}
       >
-        <h1
-          style={{
-            marginBottom: "8px",
-            fontSize: "28px",
-          }}
-        >
+        <h1 style={{ marginBottom: "8px", fontSize: "28px" }}>
           BIZAZ
         </h1>
 
-        <p
-          style={{
-            marginBottom: "25px",
-            color: "#666",
-          }}
-        >
+        <p style={{ marginBottom: "25px", color: "#666" }}>
           Biznes platformasına giriş
         </p>
 

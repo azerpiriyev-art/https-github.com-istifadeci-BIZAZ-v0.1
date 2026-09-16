@@ -1,4 +1,4 @@
-﻿# BIZAZ Production Operations Runbook
+# BIZAZ Production Operations Runbook
 
 ## 1. Purpose
 
