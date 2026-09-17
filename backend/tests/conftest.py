@@ -122,6 +122,72 @@ def test_company_data(test_db):
     }
 
 
+@pytest.fixture
+def purchase_request_lifecycle_fixture(
+    base_url,
+    auth_headers,
+    test_company_data,
+    test_database_url,
+):
+    suffix = uuid.uuid4().hex[:10].upper()
+    request_number = f"PR-LIFECYCLE-{suffix}"
+
+    payload = {
+        "request_number": request_number,
+        "status": "DRAFT",
+        "items": [
+            {
+                "product_id": test_company_data["product_id"],
+                "quantity": 1,
+                "unit": "?d?d",
+            }
+        ],
+    }
+
+    response = requests.post(
+        f"{base_url}/api/v1/procurement/purchase-requests",
+        headers=auth_headers,
+        json=payload,
+        timeout=10,
+    )
+
+    assert response.status_code == 200, response.text
+
+    data = response.json()
+
+    yield {
+        "request_id": data["id"],
+        "request_number": data["request_number"],
+    }
+
+    request_id = uuid.UUID(data["id"])
+
+    cleanup_db = psycopg.connect(
+        os.getenv("BIZAZ_TEST_DATABASE_URL", "")
+        or _database_url_from_env()
+    )
+    cleanup_db.autocommit = True
+
+    try:
+        cleanup_db.execute(
+            """
+            DELETE FROM purchase_request_items
+            WHERE purchase_request_id = %s
+            """,
+            (request_id,),
+        )
+
+        cleanup_db.execute(
+            """
+            DELETE FROM purchase_requests
+            WHERE id = %s
+            """,
+            (request_id,),
+        )
+    finally:
+        cleanup_db.close()
+
+
 @pytest.fixture(scope="session")
 def comparison_fixture(base_url, auth_headers, test_company_data, test_db):
     suffix = uuid.uuid4().hex[:10].upper()
@@ -356,6 +422,200 @@ def cancelled_request_fixture(
     finally:
         connection.close()
 
+@pytest.fixture(scope="function")
+def purchase_request_po_lifecycle_fixture(
+    base_url,
+    auth_headers,
+    test_company_data,
+    test_database_url,
+):
+    suffix = uuid.uuid4().hex[:10].upper()
+
+    request_number = f"PR-PO-LIFECYCLE-{suffix}"
+    offer_number = f"SO-PO-LIFECYCLE-{suffix}"
+
+    request_payload = {
+        "request_number": request_number,
+        "status": "DRAFT",
+        "items": [
+            {
+                "product_id": test_company_data["product_id"],
+                "quantity": 1,
+                "unit": "ədəd",
+            }
+        ],
+    }
+
+    response = requests.post(
+        f"{base_url}/api/v1/procurement/purchase-requests",
+        headers=auth_headers,
+        json=request_payload,
+        timeout=10,
+    )
+
+    assert response.status_code == 200, response.text
+
+    request_data = response.json()
+    request_id = request_data["id"]
+
+    connection = psycopg.connect(test_database_url)
+
+    try:
+        request_item_row = connection.execute(
+            """
+            SELECT id
+            FROM purchase_request_items
+            WHERE purchase_request_id = %s
+            ORDER BY created_at ASC
+            LIMIT 1
+            """,
+            (uuid.UUID(request_id),),
+        ).fetchone()
+    finally:
+        connection.close()
+
+    assert request_item_row is not None
+
+    request_item_id = str(request_item_row[0])
+
+    offer_payload = {
+        "purchase_request_id": request_id,
+        "supplier_id": test_company_data["supplier_id"],
+        "offer_number": offer_number,
+        "status": "SUBMITTED",
+        "items": [
+            {
+                "purchase_request_item_id": request_item_id,
+                "product_id": test_company_data["product_id"],
+                "quantity": 1,
+                "unit": "ədəd",
+                "unit_price": 500,
+                "vat_rate": 18,
+                "delivery_days": 5,
+            }
+        ],
+    }
+
+    response = requests.post(
+        f"{base_url}/api/v1/procurement/supplier-offers",
+        headers=auth_headers,
+        json=offer_payload,
+        timeout=10,
+    )
+
+    assert response.status_code == 200, response.text
+
+    offer_data = response.json()
+    offer_id = offer_data["id"]
+
+    selection_payload = {
+        "purchase_request_id": request_id,
+        "supplier_offer_id": offer_id,
+        "justification": "B21.2 lifecycle acceptance test",
+    }
+
+    response = requests.post(
+        f"{base_url}/api/v1/procurement/offer-selections",
+        headers=auth_headers,
+        json=selection_payload,
+        timeout=10,
+    )
+
+    assert response.status_code == 200, response.text
+
+    selection_data = response.json()
+
+    yield {
+        "request_id": request_id,
+        "request_number": request_number,
+        "offer_id": offer_id,
+        "offer_number": offer_number,
+        "selection_id": selection_data["id"],
+    }
+
+    connection = psycopg.connect(test_database_url)
+    connection.autocommit = True
+
+    try:
+        purchase_order_rows = connection.execute(
+            """
+            SELECT purchase_order_id
+            FROM offer_selections
+            WHERE purchase_request_id = %s
+              AND purchase_order_id IS NOT NULL
+            """,
+            (uuid.UUID(request_id),),
+        ).fetchall()
+
+        purchase_order_ids = [row[0] for row in purchase_order_rows]
+
+        for purchase_order_id in purchase_order_ids:
+            connection.execute(
+                """
+                DELETE FROM purchase_order_items
+                WHERE purchase_order_id = %s
+                """,
+                (purchase_order_id,),
+            )
+
+            connection.execute(
+                """
+                UPDATE offer_selections
+                SET purchase_order_id = NULL
+                WHERE purchase_order_id = %s
+                """,
+                (purchase_order_id,),
+            )
+
+            connection.execute(
+                """
+                DELETE FROM purchase_orders
+                WHERE id = %s
+                """,
+                (purchase_order_id,),
+            )
+
+        connection.execute(
+            """
+            DELETE FROM offer_selections
+            WHERE purchase_request_id = %s
+            """,
+            (uuid.UUID(request_id),),
+        )
+
+        connection.execute(
+            """
+            DELETE FROM supplier_offer_items
+            WHERE supplier_offer_id = %s
+            """,
+            (uuid.UUID(offer_id),),
+        )
+
+        connection.execute(
+            """
+            DELETE FROM supplier_offers
+            WHERE id = %s
+            """,
+            (uuid.UUID(offer_id),),
+        )
+
+        connection.execute(
+            """
+            DELETE FROM purchase_request_items
+            WHERE purchase_request_id = %s
+            """,
+            (uuid.UUID(request_id),),
+        )
+
+        connection.execute(
+            """
+            DELETE FROM purchase_requests
+            WHERE id = %s
+            """,
+            (uuid.UUID(request_id),),
+        )
+    finally:
+        connection.close()
 
 def _database_url_from_env():
     root_env = os.path.abspath(

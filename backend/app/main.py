@@ -1990,6 +1990,12 @@ class PurchaseRequestCreateSchema(BaseModel):
     items: list[PurchaseRequestItemCreateSchema] = Field(min_length=1)
 
 
+class PurchaseRequestStatusUpdateSchema(BaseModel):
+    status: str = Field(
+        pattern="^(SUBMITTED|APPROVED|CANCELLED)$"
+    )
+
+
 class PurchaseRequestItemResponseSchema(BaseModel):
     id: uuid.UUID
     purchase_request_id: uuid.UUID
@@ -3052,6 +3058,97 @@ def create_purchase_request(
     }
 
 
+@app.put(
+    "/api/v1/procurement/purchase-requests/{purchase_request_id}/status",
+    tags=["procurement"],
+)
+@limiter.limit("60/minute")
+def update_purchase_request_status(
+    request: Request,
+    purchase_request_id: uuid.UUID,
+    payload: PurchaseRequestStatusUpdateSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    if membership.role not in ("OWNER", "ADMIN", "PROCUREMENT"):
+        raise HTTPException(
+            status_code=403,
+            detail="Bu ?m?liyyat ???n kifay?t q?d?r s?lahiyy?tiniz yoxdur.",
+        )
+
+    purchase_request = db.scalar(
+        select(PurchaseRequest).where(
+            PurchaseRequest.id == purchase_request_id,
+            PurchaseRequest.company_id == membership.company_id,
+        )
+    )
+
+    if purchase_request is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Purchase Request tap?lmad?.",
+        )
+
+    current_status = purchase_request.status
+    new_status = payload.status
+
+    allowed_transitions = {
+        "DRAFT": {"SUBMITTED", "CANCELLED"},
+        "SUBMITTED": {"APPROVED", "CANCELLED"},
+        "APPROVED": set(),
+        "CLOSED": set(),
+        "CANCELLED": set(),
+    }
+
+    if new_status not in allowed_transitions.get(current_status, set()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Yanl?? status ke?idi: {current_status} -> {new_status}",
+        )
+
+    purchase_request.status = new_status
+    purchase_request.updated_at = datetime.now(timezone.utc)
+
+    if new_status == "APPROVED":
+        purchase_request.approved_by = current_user.id
+        purchase_request.approved_at = datetime.now(timezone.utc)
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            company_id=membership.company_id,
+            action="PURCHASE_REQUEST_STATUS_CHANGED",
+            entity_type="PURCHASE_REQUEST",
+            entity_id=purchase_request.id,
+            metadata={
+                "request_number": purchase_request.request_number,
+                "old_status": current_status,
+                "new_status": new_status,
+            },
+        )
+    )
+
+    db.commit()
+    db.refresh(purchase_request)
+
+    return {
+        "status": "success",
+        "message": "Purchase Request statusu d?yi?dirildi.",
+        "id": str(purchase_request.id),
+        "request_number": purchase_request.request_number,
+        "old_status": current_status,
+        "new_status": purchase_request.status,
+        "approved_by": (
+            str(purchase_request.approved_by)
+            if purchase_request.approved_by
+            else None
+        ),
+        "approved_at": purchase_request.approved_at,
+    }
+
+
 @app.post(
     "/api/v1/purchase-orders/{purchase_order_id}/status",
     response_model=PurchaseOrderStatusResponseSchema,
@@ -3105,6 +3202,45 @@ def update_purchase_order_status(
 
     purchase_order.status = new_status
     purchase_order.updated_at = datetime.now(timezone.utc)
+
+
+    if new_status == "RECEIVED":
+        selection = db.scalar(
+            select(OfferSelection).where(
+                OfferSelection.purchase_order_id == purchase_order.id,
+                OfferSelection.company_id == membership.company_id,
+            )
+        )
+
+        if selection is not None:
+            purchase_request = db.scalar(
+                select(PurchaseRequest).where(
+                    PurchaseRequest.id == selection.purchase_request_id,
+                    PurchaseRequest.company_id == membership.company_id,
+                )
+            )
+
+            if purchase_request is not None:
+                purchase_request_old_status = purchase_request.status
+                purchase_request.status = "CLOSED"
+                purchase_request.updated_at = datetime.now(timezone.utc)
+
+                db.add(
+                    AuditLog(
+                        user_id=current_user.id,
+                        company_id=membership.company_id,
+                        action="PURCHASE_REQUEST_STATUS_CHANGED",
+                        entity_type="PURCHASE_REQUEST",
+                        entity_id=purchase_request.id,
+                        metadata={
+                            "request_number": purchase_request.request_number,
+                            "old_status": purchase_request_old_status,
+                            "new_status": "CLOSED",
+                            "trigger": "PURCHASE_ORDER_RECEIVED",
+                            "purchase_order_id": str(purchase_order.id),
+                        },
+                    )
+                )
 
     db.add(
         AuditLog(
