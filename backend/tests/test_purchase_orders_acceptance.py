@@ -1,11 +1,14 @@
 import uuid
+import os
 import requests
 import pytest
 from app.database import SessionLocal
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
 from app.models import AuditLog
 
 
-BASE_URL = "http://127.0.0.1:8000"
+BASE_URL = os.getenv("BIZAZ_TEST_BASE_URL", "http://127.0.0.1:8001")
 
 OWNER_EMAIL = "bizaz-rbac-owner-test@gmail.com"
 OWNER_PASSWORD = "BIZAZ-Test-2026!"
@@ -329,11 +332,14 @@ def test_15_invalid_status_transition_blocked(owner_headers):
     assert "Yanlış status keçidi" in response.text
 
 
-def test_16_audit_create_and_status(owner_headers):
+def test_16_audit_create_and_status(owner_headers, test_database_url):
     data = create_po(owner_headers)
     po_id = data["id"]
 
-    db = SessionLocal()
+    test_engine = create_engine(test_database_url.replace("postgresql://", "postgresql+psycopg://"))
+    TestSessionLocal = sessionmaker(bind=test_engine, autoflush=False, autocommit=False)
+
+    db = TestSessionLocal()
     try:
         created_audit = db.query(AuditLog).filter(
             AuditLog.entity_type == "purchase_order",
@@ -356,7 +362,7 @@ def test_16_audit_create_and_status(owner_headers):
 
     assert response.status_code == 200
 
-    db = SessionLocal()
+    db = TestSessionLocal()
     try:
         status_audit = db.query(AuditLog).filter(
             AuditLog.entity_type == "purchase_order",

@@ -12,7 +12,7 @@ from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy.exc import DataError, IntegrityError
-from sqlalchemy import select, func
+from sqlalchemy import select, func, or_
 from sqlalchemy.orm import Session
 
 from .config import settings
@@ -2530,6 +2530,12 @@ def create_offer_selection(
             detail="Only SUBMITTED supplier offers can be selected",
         )
 
+    if supplier_offer.valid_until is not None and supplier_offer.valid_until < date.today():
+        raise HTTPException(
+            status_code=422,
+            detail="Supplier offer has expired",
+        )
+
     existing_selection = db.scalar(
         select(OfferSelection).where(
             OfferSelection.company_id == membership.company_id,
@@ -2639,6 +2645,10 @@ def get_purchase_request_comparison(
             SupplierOffer.purchase_request_id == purchase_request.id,
             SupplierOffer.company_id == membership.company_id,
             SupplierOffer.status == "SUBMITTED",
+            or_(
+                SupplierOffer.valid_until.is_(None),
+                SupplierOffer.valid_until >= date.today(),
+            ),
         )
     ).all()
 
@@ -3358,6 +3368,12 @@ def create_purchase_order_from_selection(
         raise HTTPException(
             status_code=422,
             detail="Only SUBMITTED supplier offers can create purchase orders",
+        )
+
+    if supplier_offer.valid_until is not None and supplier_offer.valid_until < date.today():
+        raise HTTPException(
+            status_code=422,
+            detail="Supplier offer has expired",
         )
 
     supplier = db.scalar(

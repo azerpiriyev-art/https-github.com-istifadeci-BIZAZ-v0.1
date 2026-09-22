@@ -1,5 +1,6 @@
 import os
 import uuid
+from datetime import datetime, timedelta, timezone
 
 import pytest
 import requests
@@ -139,7 +140,7 @@ def purchase_request_lifecycle_fixture(
             {
                 "product_id": test_company_data["product_id"],
                 "quantity": 1,
-                "unit": "?d?d",
+                "unit": "ədəd",
             }
         ],
     }
@@ -633,3 +634,157 @@ def _database_url_from_env():
                     return (database_url[:-5] + "bizaz_procurement_test").replace("postgresql+psycopg://", "postgresql://")
 
     raise AssertionError("DATABASE_URL not found")
+
+
+@pytest.fixture(scope="function")
+def expired_supplier_offer_fixture(
+    base_url,
+    auth_headers,
+    test_credentials,
+    test_company_data,
+    test_database_url,
+):
+
+    login_response = requests.post(
+        f"{base_url}/api/v1/login",
+        json=test_credentials,
+        timeout=10,
+    )
+    assert login_response.status_code == 200, login_response.text
+
+    fresh_auth_headers = {
+        "Authorization": f"Bearer {login_response.json()['token']}",
+    }
+    suffix = uuid.uuid4().hex[:10].upper()
+
+    request_number = f"PR-EXPIRED-OFFER-{suffix}"
+    offer_number = f"SO-EXPIRED-OFFER-{suffix}"
+
+    request_payload = {
+        "request_number": request_number,
+        "status": "DRAFT",
+        "items": [
+            {
+                "product_id": test_company_data["product_id"],
+                "quantity": 1,
+                "unit": "ədəd",
+            }
+        ],
+    }
+
+    response = requests.post(
+        f"{base_url}/api/v1/procurement/purchase-requests",
+        headers=fresh_auth_headers,
+        json=request_payload,
+        timeout=10,
+    )
+    assert response.status_code == 200, response.text
+
+    request_id = response.json()["id"]
+
+    connection = psycopg.connect(test_database_url)
+    try:
+        request_item_row = connection.execute(
+            """
+            SELECT id
+            FROM purchase_request_items
+            WHERE purchase_request_id = %s
+            ORDER BY created_at ASC
+            LIMIT 1
+            """,
+            (uuid.UUID(request_id),),
+        ).fetchone()
+    finally:
+        connection.close()
+
+    assert request_item_row is not None
+
+    request_item_id = str(request_item_row[0])
+
+    expired_date = (datetime.now(timezone.utc) - timedelta(days=1)).date()
+
+    offer_payload = {
+        "purchase_request_id": request_id,
+        "supplier_id": test_company_data["supplier_id"],
+        "offer_number": offer_number,
+        "offer_date": (expired_date - timedelta(days=5)).isoformat(),
+        "valid_until": expired_date.isoformat(),
+        "currency": "AZN",
+        "status": "SUBMITTED",
+        "items": [
+            {
+                "purchase_request_item_id": request_item_id,
+                "product_id": test_company_data["product_id"],
+                "quantity": 1,
+                "unit": "ədəd",
+                "unit_price": 500,
+                "vat_rate": 18,
+                "delivery_days": 5,
+            }
+        ],
+    }
+
+    response = requests.post(
+        f"{base_url}/api/v1/procurement/supplier-offers",
+        headers=fresh_auth_headers,
+        json=offer_payload,
+        timeout=10,
+    )
+    assert response.status_code == 200, response.text
+
+    offer_id = response.json()["id"]
+
+    yield {
+        "request_id": request_id,
+        "request_item_id": request_item_id,
+        "request_number": request_number,
+        "offer_id": offer_id,
+        "offer_number": offer_number,
+        "valid_until": expired_date,
+    }
+
+    connection = psycopg.connect(test_database_url)
+    connection.autocommit = True
+
+    try:
+        connection.execute(
+            """
+            DELETE FROM offer_selections
+            WHERE purchase_request_id = %s
+            """,
+            (uuid.UUID(request_id),),
+        )
+
+        connection.execute(
+            """
+            DELETE FROM supplier_offer_items
+            WHERE supplier_offer_id = %s
+            """,
+            (uuid.UUID(offer_id),),
+        )
+
+        connection.execute(
+            """
+            DELETE FROM supplier_offers
+            WHERE id = %s
+            """,
+            (uuid.UUID(offer_id),),
+        )
+
+        connection.execute(
+            """
+            DELETE FROM purchase_request_items
+            WHERE purchase_request_id = %s
+            """,
+            (uuid.UUID(request_id),),
+        )
+
+        connection.execute(
+            """
+            DELETE FROM purchase_requests
+            WHERE id = %s
+            """,
+            (uuid.UUID(request_id),),
+        )
+    finally:
+        connection.close()
