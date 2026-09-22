@@ -17,10 +17,31 @@
 | Company Management | рџџў Implemented | Company creation, lookup, and authorized update endpoints are implemented. | Extend only as required by the request/offer flow. |
 | Product & Supplier Catalog | рџџў Implemented | Product, price, and supplier CRUD endpoints are implemented with authorization and audit logging. | Validate in CI. |
 | Purchase Orders | рџџў Implemented | PO CRUD, controlled status transitions, company isolation, and audit acceptance tests exist. | Link to the request/offer flow. |
-| Purchase Requests / Supplier Offers / Comparison | 🔴 Not implemented | No request, offer, comparison, or supplier-selection endpoints are present in the baseline. | 4.23.3. |
+| Purchase Requests / Supplier Offers / Comparison | 🟢 Implemented | Buyer purchase-request lifecycle, supplier offers, offer comparison, explicit supplier selection, purchase-order creation, authorization/company isolation, audit coverage, and expired-offer validation are implemented and covered by the procurement test suite. | 4.23.4 — frontend integration. |
 | Payments / Delivery / Reviews / Notifications / KPI | 🔴 Not implemented | MVP scope only; no completed delivery evidence in this baseline. | After the core procurement vertical slice. |
 | Automated Testing / CI | PASS | GitHub Actions verified backend syntax/isolated tests, PostgreSQL foundation migration, frontend production build, and repository hygiene for commit `e2e10f8`. The PO acceptance suite still requires a seeded integration environment. | Make PO fixtures self-contained. |
 | Production Operations & Governance (4.18–4.22.9) | рџџў PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
+
+
+## 4.23.3 — Procurement request to supplier offer
+
+**Status: PASS**
+
+The backend vertical slice is implemented and verified against the documented acceptance gates:
+
+- Authorized buyer can create, list, view, and update purchase requests within the company boundary.
+- Eligible supplier can submit offers for visible purchase requests.
+- Offer comparison and explicit supplier selection are implemented.
+- Authorization, company isolation, validation, and audit-event coverage are automated.
+- Integration coverage verifies the procurement path through offer selection and purchase-order creation.
+- Expired supplier offers are excluded from comparison and rejected during selection and purchase-order creation.
+- Current procurement test suite: **31/31 PASS**.
+
+## 4.23.4 — Frontend integration for the delivered vertical slice
+
+**Status: NEXT**
+
+The next product-development stage is frontend integration of the completed 4.23.3 procurement flow. The UI must allow authenticated users to complete the request → offer → comparison → selection → purchase-order flow without direct API calls, with usable loading, error, and authorization handling, followed by production-build and integration-environment verification.
 
 ## 4.23.1 synchronization result
 
