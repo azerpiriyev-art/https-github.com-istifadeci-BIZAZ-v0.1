@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from 'react';
 
-const API_URL = 'http://127.0.0.1:8000';
+const API_URL = 'http://127.0.0.1:8001';
 
 type Product = {
   id: string;
@@ -21,6 +21,31 @@ type RequestItem = {
   notes: string;
 };
 
+type PurchaseRequestItemResponse = {
+  id: string;
+  purchase_request_id: string;
+  product_id: string;
+  quantity: number | string;
+  unit: string;
+  required_date: string | null;
+  specifications: string | null;
+  notes: string | null;
+};
+
+type PurchaseRequestResponse = {
+  id: string;
+  company_id: string;
+  request_number: string;
+  request_date: string | null;
+  status: string;
+  requested_by: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+  items: PurchaseRequestItemResponse[];
+};
 const emptyItem = (): RequestItem => ({
   product_id: '',
   quantity: '',
@@ -39,9 +64,12 @@ export default function PurchaseRequestsPage() {
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
+  const [requests, setRequests] = useState<PurchaseRequestResponse[]>([]);
+  const [loadingRequests, setLoadingRequests] = useState(false);
 
   useEffect(() => {
     void loadProducts();
+    void loadRequests();
   }, []);
 
   async function loadProducts() {
@@ -64,6 +92,81 @@ export default function PurchaseRequestsPage() {
     }
   }
 
+  async function loadRequests() {
+    setLoadingRequests(true);
+
+    try {
+      const token = localStorage.getItem('bizaz_token');
+      if (!token) throw new Error('Sistemə daxil olmaq tələb olunur.');
+
+      const response = await fetch(`${API_URL}/api/v1/procurement/purchase-requests`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Satınalma sorğuları yüklənmədi.');
+      }
+
+      setRequests(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Satınalma sorğuları yüklənmədi.');
+    } finally {
+      setLoadingRequests(false);
+    }
+  }
+  async function loadRequestDetail(requestId: string) {
+    setError('');
+    setMessage('');
+
+    try {
+      const token = localStorage.getItem('bizaz_token');
+      if (!token) {
+        throw new Error('Sistemə daxil olmaq tələb olunur.');
+      }
+
+      const response = await fetch(
+        `${API_URL}/api/v1/procurement/purchase-requests/${requestId}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || 'Satınalma sorğusu yüklənmədi.');
+      }
+
+      setRequestNumber(data.request_number || '');
+      setRequestDate(data.request_date || '');
+      setNotes(data.notes || '');
+
+      setItems(
+        Array.isArray(data.items) && data.items.length > 0
+          ? data.items.map((item: PurchaseRequestItemResponse) => ({
+              product_id: item.product_id,
+              quantity: String(item.quantity ?? ''),
+              unit: item.unit || '',
+              required_date: item.required_date || '',
+              specifications: item.specifications || '',
+              notes: item.notes || '',
+            }))
+          : [emptyItem()]
+      );
+
+      setMessage(`Satınalma sorğusu ${data.request_number || ''} yükləndi.`);
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Satınalma sorğusu yüklənmədi.'
+      );
+    }
+  }
   function updateItem(index: number, field: keyof RequestItem, value: string) {
     setItems((current) =>
       current.map((item, i) => (i === index ? { ...item, [field]: value } : item))
@@ -184,6 +287,53 @@ export default function PurchaseRequestsPage() {
         {message && <div style={styles.success}>{message}</div>}
         {error && <div style={styles.error}>{error}</div>}
 
+        <section style={styles.card}>
+          <div style={styles.sectionHeader}>
+            <div>
+              <h2 style={styles.sectionTitle}>Mövcud satınalma sorğuları</h2>
+              <div style={{ marginTop: 5, color: '#667085', fontSize: 13 }}>
+                Mövcud sorğunu seçərək onun detallarına baxa bilərsiniz.
+              </div>
+            </div>
+
+            <button
+              type="button"
+              onClick={() => void loadRequests()}
+              disabled={loadingRequests}
+              style={styles.secondaryButton}
+            >
+              {loadingRequests ? 'Yüklənir...' : 'Yenilə'}
+            </button>
+          </div>
+
+          {requests.length === 0 ? (
+            <div style={styles.emptyState}>
+              {loadingRequests ? 'Sorğular yüklənir...' : 'Hələ satınalma sorğusu yoxdur.'}
+            </div>
+          ) : (
+            <div style={styles.requestList}>
+              {requests.map((request) => (
+                <button
+                  key={request.id}
+                  type="button"
+                  onClick={() => void loadRequestDetail(request.id)}
+                  style={styles.requestRow}
+                >
+                  <div>
+                    <div style={styles.requestNumber}>{request.request_number}</div>
+                    <div style={styles.requestMeta}>
+                      {request.request_date || 'Tarix yoxdur'} • {request.items.length} sətir
+                    </div>
+                  </div>
+
+                  <span style={styles.statusBadge}>
+                    {request.status}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
         <form onSubmit={submit}>
           <section style={styles.card}>
             <h2 style={styles.sectionTitle}>Sorğu məlumatları</h2>
@@ -361,6 +511,50 @@ const styles: Record<string, React.CSSProperties> = {
   itemNumber: { fontSize: 13, color: '#667085', fontWeight: 700, marginBottom: 14 },
   actions: { display: 'flex', justifyContent: 'flex-end', gap: 12 },
   primaryButton: { border: 0, borderRadius: 8, padding: '11px 18px', background: '#175cd3', color: '#fff', fontWeight: 600, cursor: 'pointer' },
-  secondaryButton: { border: '1px solid #d0d5dd', borderRadius: 8, padding: '10px 16px', background: '#fff', color: '#344054', fontWeight: 600, cursor: 'pointer' },
+  emptyState: {
+    padding: 20,
+    border: '1px dashed #d0d5dd',
+    borderRadius: 8,
+    color: '#667085',
+    textAlign: 'center',
+  },
+  requestList: {
+    display: 'grid',
+    gap: 8,
+    marginTop: 16,
+  },
+  requestRow: {
+    width: '100%',
+    display: 'flex',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    gap: 16,
+    padding: 14,
+    border: '1px solid #eaecf0',
+    borderRadius: 8,
+    background: '#fff',
+    cursor: 'pointer',
+    textAlign: 'left',
+  },
+  requestNumber: {
+    fontWeight: 700,
+    color: '#101828',
+  },
+  requestMeta: {
+    marginTop: 4,
+    color: '#667085',
+    fontSize: 13,
+  },
+  statusBadge: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    padding: '4px 10px',
+    borderRadius: 999,
+    background: '#f2f4f7',
+    color: '#344054',
+    fontSize: 12,
+    fontWeight: 600,
+    whiteSpace: 'nowrap',
+  },  secondaryButton: { border: '1px solid #d0d5dd', borderRadius: 8, padding: '10px 16px', background: '#fff', color: '#344054', fontWeight: 600, cursor: 'pointer' },
   deleteButton: { marginTop: 12, border: 0, background: 'transparent', color: '#b42318', cursor: 'pointer', fontWeight: 600, padding: 0 },
 };

@@ -2099,11 +2099,19 @@ class ProcurementComparisonItemSchema(BaseModel):
     offers: list[ProcurementComparisonOfferSchema]
 
 
+class ProcurementComparisonActiveSelectionSchema(BaseModel):
+    id: uuid.UUID
+    supplier_offer_id: uuid.UUID
+    status: str
+    purchase_order_id: uuid.UUID | None
+
+
 class ProcurementComparisonResponseSchema(BaseModel):
     purchase_request_id: uuid.UUID
     request_number: str
     request_date: date
     status: str
+    active_selection: ProcurementComparisonActiveSelectionSchema | None
     items: list[ProcurementComparisonItemSchema]
 
 
@@ -2776,11 +2784,29 @@ def get_purchase_request_comparison(
             }
         )
 
+    active_selection = db.scalar(
+        select(OfferSelection).where(
+            OfferSelection.company_id == membership.company_id,
+            OfferSelection.purchase_request_id == purchase_request.id,
+            OfferSelection.status == "SELECTED",
+        )
+    )
+
     return {
         "purchase_request_id": purchase_request.id,
         "request_number": purchase_request.request_number,
         "request_date": purchase_request.request_date,
         "status": purchase_request.status,
+        "active_selection": (
+            {
+                "id": active_selection.id,
+                "supplier_offer_id": active_selection.supplier_offer_id,
+                "status": active_selection.status,
+                "purchase_order_id": active_selection.purchase_order_id,
+            }
+            if active_selection is not None
+            else None
+        ),
         "items": comparison_items,
     }
 
