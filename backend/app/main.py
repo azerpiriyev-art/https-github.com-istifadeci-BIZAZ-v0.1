@@ -2063,6 +2063,18 @@ class NeedPRConversionResponseSchema(BaseModel):
     created_at: datetime
     notes: str | None
 
+class NeedToPRConversionItemSchema(BaseModel):
+    need_item_id: uuid.UUID
+    quantity: Decimal = Field(gt=0)
+
+
+class NeedToPRConversionRequestSchema(BaseModel):
+    request_number: str = Field(min_length=1, max_length=50)
+    request_date: date | None = None
+    notes: str | None = Field(default=None, max_length=5000)
+    items: list[NeedToPRConversionItemSchema] = Field(min_length=1)
+
+
 class PurchaseRequestItemCreateSchema(BaseModel):
     product_id: uuid.UUID
     quantity: Decimal = Field(gt=0)
