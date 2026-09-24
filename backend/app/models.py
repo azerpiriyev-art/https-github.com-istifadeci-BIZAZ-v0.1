@@ -1,8 +1,8 @@
-from decimal import Decimal
+﻿from decimal import Decimal
 import uuid
 from datetime import datetime, date
 
-from sqlalchemy import Date, Boolean, CHAR, DateTime, ForeignKey, Integer, Numeric, String, Text, func
+from sqlalchemy import Date, Boolean, CHAR, DateTime, ForeignKey, ForeignKeyConstraint, Integer, Numeric, String, Text, func
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -157,7 +157,7 @@ class Product(Base):
     unit: Mapped[str] = mapped_column(
         String(30),
         nullable=False,
-        default="ədəd",
+        default="Й™dЙ™d",
     )
     description: Mapped[str | None] = mapped_column(
         Text,
@@ -432,7 +432,7 @@ class PurchaseOrderItem(Base):
     unit: Mapped[str] = mapped_column(
         String(30),
         nullable=False,
-        default="ədəd",
+        default="Й™dЙ™d",
     )
 
     unit_price: Mapped[Decimal] = mapped_column(
@@ -468,6 +468,219 @@ class PurchaseOrderItem(Base):
         DateTime(timezone=True),
         nullable=False,
         server_default=func.now(),
+    )
+
+class Need(Base):
+    __tablename__ = "needs"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    need_number: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+
+    source: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="MANUAL",
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="DRAFT",
+    )
+
+    title: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+    )
+
+    description: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    requested_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    required_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+
+    priority: Mapped[str] = mapped_column(
+        String(20),
+        nullable=False,
+        default="NORMAL",
+    )
+
+    notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+class NeedItem(Base):
+    __tablename__ = "need_items"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+
+    need_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("needs.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("products.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    quantity: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4),
+        nullable=False,
+    )
+
+    unit: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+    )
+
+    required_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+
+    specifications: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+class NeedPRConversion(Base):
+    __tablename__ = "need_pr_conversions"
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["need_item_id", "need_id", "product_id"],
+            ["need_items.id", "need_items.need_id", "need_items.product_id"],
+            name="fk_conversion_need_item_product",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            [
+                "purchase_request_item_id",
+                "purchase_request_id",
+                "product_id",
+            ],
+            [
+                "purchase_request_items.id",
+                "purchase_request_items.purchase_request_id",
+                "purchase_request_items.product_id",
+            ],
+            name="fk_conversion_pr_item_product",
+            ondelete="RESTRICT",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+
+    need_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+
+    need_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+
+    product_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+
+    purchase_request_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+
+    purchase_request_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+
+    quantity: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4),
+        nullable=False,
+    )
+
+    created_by: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
     )
 
 class PurchaseRequest(Base):
@@ -613,7 +826,6 @@ class SupplierOffer(Base):
 
     purchase_request_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("purchase_requests.id", ondelete="RESTRICT"),
         nullable=False,
     )
 
@@ -769,7 +981,6 @@ class OfferSelection(Base):
 
     purchase_request_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
-        ForeignKey("purchase_requests.id", ondelete="RESTRICT"),
         nullable=False,
     )
 

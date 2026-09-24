@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
-from .models import AuditLog, Company, CompanyMember, OfferSelection, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User
+from .models import AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User
 
 
 # ============================================================
@@ -1973,6 +1973,96 @@ def delete_supplier(
 # PROCUREMENT SCHEMAS
 # ============================================================
 
+# ============================================================
+# NEED ENGINE SCHEMAS
+# ============================================================
+
+class NeedItemCreateSchema(BaseModel):
+    product_id: uuid.UUID
+    quantity: Decimal = Field(gt=0)
+    unit: str = Field(min_length=1, max_length=30)
+    required_date: date | None = None
+    specifications: str | None = Field(default=None, max_length=5000)
+    notes: str | None = Field(default=None, max_length=5000)
+
+
+class NeedCreateSchema(BaseModel):
+    need_number: str = Field(min_length=1, max_length=50)
+    source: str = Field(
+        default="MANUAL",
+        pattern="^(MANUAL|PROJECT|INVENTORY)$",
+    )
+    title: str = Field(min_length=1, max_length=255)
+    description: str | None = Field(default=None, max_length=10000)
+    required_date: date | None = None
+    priority: str = Field(
+        default="NORMAL",
+        pattern="^(LOW|NORMAL|HIGH|URGENT)$",
+    )
+    notes: str | None = Field(default=None, max_length=5000)
+    items: list[NeedItemCreateSchema] = Field(min_length=1)
+
+
+class NeedStatusUpdateSchema(BaseModel):
+    status: str = Field(
+        pattern=(
+            "^(SUBMITTED|UNDER_REVIEW|APPROVED|"
+            "REJECTED|CANCELLED|EXPIRED)$"
+        )
+    )
+
+
+class NeedItemResponseSchema(BaseModel):
+    id: uuid.UUID
+    need_id: uuid.UUID
+    product_id: uuid.UUID
+    quantity: Decimal
+    unit: str
+    required_date: date | None
+    specifications: str | None
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class NeedResponseSchema(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    need_number: str
+    source: str
+    status: str
+    title: str
+    description: str | None
+    requested_by: uuid.UUID
+    required_date: date | None
+    priority: str
+    notes: str | None
+    created_at: datetime
+    updated_at: datetime
+    items: list[NeedItemResponseSchema]
+
+
+class NeedPRConversionCreateSchema(BaseModel):
+    need_item_id: uuid.UUID
+    product_id: uuid.UUID
+    purchase_request_id: uuid.UUID
+    purchase_request_item_id: uuid.UUID
+    quantity: Decimal = Field(gt=0)
+    notes: str | None = Field(default=None, max_length=5000)
+
+
+class NeedPRConversionResponseSchema(BaseModel):
+    id: uuid.UUID
+    need_id: uuid.UUID
+    need_item_id: uuid.UUID
+    product_id: uuid.UUID
+    purchase_request_id: uuid.UUID
+    purchase_request_item_id: uuid.UUID
+    quantity: Decimal
+    created_by: uuid.UUID
+    created_at: datetime
+    notes: str | None
+
 class PurchaseRequestItemCreateSchema(BaseModel):
     product_id: uuid.UUID
     quantity: Decimal = Field(gt=0)
@@ -2964,6 +3054,168 @@ PurchaseOrderListResponseSchema.model_rebuild()
 # ============================================================
 
 
+# ============================================================
+# NEED ENGINE — NEED CREATE
+# ============================================================
+
+@app.post(
+    "/api/v1/needs",
+    response_model=NeedResponseSchema,
+    status_code=201,
+    tags=["needs"],
+)
+@limiter.limit("60/minute")
+def create_need(
+    request: Request,
+    payload: NeedCreateSchema,
+    current_user: User = Depends(
+        require_role(
+            "OWNER",
+            "ADMIN",
+            "PROCUREMENT",
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(
+        current_user,
+        db,
+    )
+
+    existing_need = db.scalar(
+        select(Need).where(
+            Need.company_id == membership.company_id,
+            Need.need_number == payload.need_number,
+        )
+    )
+
+    if existing_need:
+        raise HTTPException(
+            status_code=409,
+            detail="Bu tələbat nömrəsi artıq mövcuddur.",
+        )
+
+    product_ids = [item.product_id for item in payload.items]
+
+    if len(product_ids) != len(set(product_ids)):
+        raise HTTPException(
+            status_code=400,
+            detail="Need daxilində eyni məhsul bir neçə dəfə göstərilə bilməz.",
+        )
+
+    products = db.scalars(
+        select(Product).where(
+            Product.id.in_(product_ids),
+            Product.company_id == membership.company_id,
+            Product.is_active.is_(True),
+        )
+    ).all()
+
+    product_map = {
+        product.id: product
+        for product in products
+    }
+
+    missing_products = [
+        str(product_id)
+        for product_id in product_ids
+        if product_id not in product_map
+    ]
+
+    if missing_products:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Bir və ya daha çox məhsul tapılmadı və ya bu şirkətə aid deyil.",
+                "product_ids": missing_products,
+            },
+        )
+
+    need = Need(
+        company_id=membership.company_id,
+        need_number=payload.need_number,
+        source=payload.source,
+        status="DRAFT",
+        title=payload.title,
+        description=payload.description,
+        requested_by=current_user.id,
+        required_date=payload.required_date,
+        priority=payload.priority,
+        notes=payload.notes,
+    )
+
+    db.add(need)
+    db.flush()
+
+    need_items = []
+
+    for item in payload.items:
+        need_item = NeedItem(
+            need_id=need.id,
+            product_id=item.product_id,
+            quantity=item.quantity,
+            unit=item.unit,
+            required_date=item.required_date,
+            specifications=item.specifications,
+            notes=item.notes,
+        )
+        db.add(need_item)
+        need_items.append(need_item)
+
+    db.add(
+        AuditLog(
+            company_id=membership.company_id,
+            user_id=current_user.id,
+            action="NEED_CREATED",
+            entity_type="NEED",
+            entity_id=need.id,
+            ip_address=request.client.host if request.client else None,
+            log_metadata={
+                "need_number": need.need_number,
+                "source": need.source,
+                "status": need.status,
+                "priority": need.priority,
+                "item_count": len(payload.items),
+            },
+        )
+    )
+
+    db.commit()
+    db.refresh(need)
+
+    for item in need_items:
+        db.refresh(item)
+
+    return {
+        "id": need.id,
+        "company_id": need.company_id,
+        "need_number": need.need_number,
+        "source": need.source,
+        "status": need.status,
+        "title": need.title,
+        "description": need.description,
+        "requested_by": need.requested_by,
+        "required_date": need.required_date,
+        "priority": need.priority,
+        "notes": need.notes,
+        "created_at": need.created_at,
+        "updated_at": need.updated_at,
+        "items": [
+            {
+                "id": item.id,
+                "need_id": item.need_id,
+                "product_id": item.product_id,
+                "quantity": item.quantity,
+                "unit": item.unit,
+                "required_date": item.required_date,
+                "specifications": item.specifications,
+                "notes": item.notes,
+                "created_at": item.created_at,
+                "updated_at": item.updated_at,
+            }
+            for item in need_items
+        ],
+    }
 # ============================================================
 # PROCUREMENT ? PURCHASE REQUEST CREATE
 # ============================================================
