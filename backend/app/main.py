@@ -3058,6 +3058,102 @@ PurchaseOrderListResponseSchema.model_rebuild()
 # NEED ENGINE — NEED CREATE
 # ============================================================
 
+
+# ============================================================
+# NEED ENGINE — NEED STATUS TRANSITION
+# ============================================================
+
+@app.post(
+    "/api/v1/needs/{need_id}/status",
+    tags=["needs"],
+)
+@limiter.limit("60/minute")
+def update_need_status(
+    request: Request,
+    need_id: uuid.UUID,
+    payload: NeedStatusUpdateSchema,
+    current_user: User = Depends(
+        require_role(
+            "OWNER",
+            "ADMIN",
+            "PROCUREMENT",
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    need = db.scalar(
+        select(Need).where(
+            Need.id == need_id,
+            Need.company_id == membership.company_id,
+        )
+    )
+
+    if need is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Need tapılmadı.",
+        )
+
+    current_status = need.status
+    new_status = payload.status
+
+    allowed_transitions = {
+        "DRAFT": {"SUBMITTED", "CANCELLED"},
+        "SUBMITTED": {"UNDER_REVIEW", "CANCELLED"},
+        "UNDER_REVIEW": {"APPROVED", "REJECTED", "CANCELLED"},
+        "APPROVED": set(),
+        "REJECTED": set(),
+        "CANCELLED": set(),
+        "EXPIRED": set(),
+    }
+
+    if new_status == "EXPIRED":
+        raise HTTPException(
+            status_code=400,
+            detail="EXPIRED statusu bu mərhələdə əl ilə təyin edilə bilməz.",
+        )
+
+    if new_status not in allowed_transitions.get(
+        current_status,
+        set(),
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Yanlış status keçidi: {current_status} -> {new_status}",
+        )
+
+    need.status = new_status
+    need.updated_at = datetime.now(timezone.utc)
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            company_id=membership.company_id,
+            action="NEED_STATUS_CHANGED",
+            entity_type="NEED",
+            entity_id=need.id,
+            ip_address=request.client.host if request.client else None,
+            log_metadata={
+                "need_number": need.need_number,
+                "old_status": current_status,
+                "new_status": new_status,
+            },
+        )
+    )
+
+    db.commit()
+    db.refresh(need)
+
+    return {
+        "status": "success",
+        "message": "Need statusu dəyişdirildi.",
+        "id": str(need.id),
+        "need_number": need.need_number,
+        "old_status": current_status,
+        "new_status": need.status,
+    }
 @app.post(
     "/api/v1/needs",
     response_model=NeedResponseSchema,
