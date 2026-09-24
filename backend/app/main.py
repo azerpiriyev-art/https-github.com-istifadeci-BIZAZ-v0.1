@@ -3325,6 +3325,276 @@ def create_need(
         ],
     }
 # ============================================================
+# PROCUREMENT ? NEED TO PURCHASE REQUEST CONVERSION
+# ============================================================
+
+@app.post(
+    "/api/v1/procurement/needs/{need_id}/convert",
+    tags=["procurement", "needs"],
+)
+@limiter.limit("60/minute")
+def convert_need_to_purchase_request(
+    request: Request,
+    need_id: uuid.UUID,
+    payload: NeedToPRConversionRequestSchema,
+    current_user: User = Depends(
+        require_role(
+            "OWNER",
+            "ADMIN",
+            "PROCUREMENT",
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(
+        current_user,
+        db,
+    )
+
+    need = db.scalar(
+        select(Need)
+        .where(
+            Need.id == need_id,
+            Need.company_id == membership.company_id,
+        )
+        .with_for_update()
+    )
+
+    if need is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Need tapilmadi.",
+        )
+
+    if need.status not in ("APPROVED", "PARTIALLY_CONVERTED"):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Need bu merhelede PR-e cevrile bilmez: {need.status}",
+        )
+
+    requested_item_ids = [item.need_item_id for item in payload.items]
+
+    if len(requested_item_ids) != len(set(requested_item_ids)):
+        raise HTTPException(
+            status_code=400,
+            detail="Eyni NeedItem bir conversion sor?usunda t?krar g?nd?ril? bilm?z.",
+        )
+
+    locked_items = db.scalars(
+        select(NeedItem)
+        .where(
+            NeedItem.id.in_(requested_item_ids),
+            NeedItem.need_id == need.id,
+        )
+        .order_by(NeedItem.id)
+        .with_for_update()
+    ).all()
+
+    item_map = {
+        item.id: item
+        for item in locked_items
+    }
+
+    missing_items = [
+        str(item_id)
+        for item_id in requested_item_ids
+        if item_id not in item_map
+    ]
+
+    if missing_items:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Bir v? ya daha ?ox NeedItem bu Need-? aid deyil.",
+                "need_item_ids": missing_items,
+            },
+        )
+
+    remaining_by_item = {}
+
+    for payload_item in payload.items:
+        need_item = item_map[payload_item.need_item_id]
+
+        converted_quantity = db.scalar(
+            select(func.coalesce(func.sum(NeedPRConversion.quantity), 0))
+            .where(
+                NeedPRConversion.need_item_id == need_item.id,
+                NeedPRConversion.need_id == need.id,
+            )
+        )
+
+        remaining_quantity = need_item.quantity - converted_quantity
+
+        if payload_item.quantity > remaining_quantity:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "message": "Conversion miqdar? qalan Need miqdar?ndan ?oxdur.",
+                    "need_item_id": str(need_item.id),
+                    "requested_quantity": str(payload_item.quantity),
+                    "remaining_quantity": str(remaining_quantity),
+                },
+            )
+
+        remaining_by_item[need_item.id] = remaining_quantity
+
+    existing_request = db.scalar(
+        select(PurchaseRequest).where(
+            PurchaseRequest.company_id == membership.company_id,
+            PurchaseRequest.request_number == payload.request_number,
+        )
+    )
+
+    if existing_request is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Bu request_number art?q m?vcuddur.",
+        )
+
+    purchase_request = PurchaseRequest(
+        company_id=membership.company_id,
+        request_number=payload.request_number,
+        request_date=payload.request_date,
+        status="DRAFT",
+        requested_by=current_user.id,
+        notes=payload.notes,
+    )
+
+    db.add(purchase_request)
+    db.flush()
+
+    created_conversions = []
+
+    for payload_item in payload.items:
+        need_item = item_map[payload_item.need_item_id]
+
+        purchase_request_item = PurchaseRequestItem(
+            purchase_request_id=purchase_request.id,
+            product_id=need_item.product_id,
+            quantity=payload_item.quantity,
+            unit=need_item.unit,
+            required_date=need_item.required_date,
+            specifications=need_item.specifications,
+            notes=need_item.notes,
+        )
+
+        db.add(purchase_request_item)
+        db.flush()
+
+        conversion = NeedPRConversion(
+            need_id=need.id,
+            need_item_id=need_item.id,
+            product_id=need_item.product_id,
+            purchase_request_id=purchase_request.id,
+            purchase_request_item_id=purchase_request_item.id,
+            quantity=payload_item.quantity,
+            created_by=current_user.id,
+            notes=payload.notes,
+        )
+
+        db.add(conversion)
+        created_conversions.append(
+            {
+                "need_item_id": str(need_item.id),
+                "purchase_request_item_id": str(
+                    purchase_request_item.id
+                ),
+                "quantity": str(payload_item.quantity),
+            }
+        )
+
+    db.flush()
+
+    all_need_items = db.scalars(
+        select(NeedItem)
+        .where(
+            NeedItem.need_id == need.id,
+        )
+        .order_by(NeedItem.id)
+        .with_for_update()
+    ).all()
+
+    fully_converted = True
+
+    for need_item in all_need_items:
+        converted_quantity = db.scalar(
+            select(func.coalesce(func.sum(NeedPRConversion.quantity), 0))
+            .where(
+                NeedPRConversion.need_item_id == need_item.id,
+                NeedPRConversion.need_id == need.id,
+            )
+        )
+
+        if converted_quantity < need_item.quantity:
+            fully_converted = False
+            break
+
+    old_need_status = need.status
+    need.status = (
+        "FULLY_CONVERTED"
+        if fully_converted
+        else "PARTIALLY_CONVERTED"
+    )
+
+    db.add(
+        AuditLog(
+            company_id=membership.company_id,
+            user_id=current_user.id,
+            action="PURCHASE_REQUEST_CREATED",
+            entity_type="PURCHASE_REQUEST",
+            entity_id=purchase_request.id,
+            log_metadata={
+                "request_number": purchase_request.request_number,
+                "source": "NEED_CONVERSION",
+                "need_id": str(need.id),
+                "need_number": need.need_number,
+            },
+        )
+    )
+
+    db.add(
+        AuditLog(
+            company_id=membership.company_id,
+            user_id=current_user.id,
+            action="NEED_CONVERTED_TO_PR",
+            entity_type="NEED",
+            entity_id=need.id,
+            log_metadata={
+                "need_number": need.need_number,
+                "purchase_request_id": str(purchase_request.id),
+                "purchase_request_number": purchase_request.request_number,
+                "old_status": old_need_status,
+                "new_status": need.status,
+                "item_count": len(created_conversions),
+                "conversions": created_conversions,
+            },
+        )
+    )
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="PR yarad?lark?n unikal m?lumat toqqu?mas? ba? verdi.",
+        )
+
+    db.refresh(purchase_request)
+
+    return {
+        "status": "created",
+        "need_id": str(need.id),
+        "need_number": need.need_number,
+        "need_status": need.status,
+        "purchase_request_id": str(purchase_request.id),
+        "request_number": purchase_request.request_number,
+        "purchase_request_status": purchase_request.status,
+        "conversions": created_conversions,
+    }
+
+
+# ============================================================
 # PROCUREMENT ? PURCHASE REQUEST CREATE
 # ============================================================
 
