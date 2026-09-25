@@ -2087,7 +2087,7 @@ class ApprovalStepCreateSchema(BaseModel):
 
 class ApprovalRequestCreateSchema(BaseModel):
     entity_type: str = Field(
-        pattern="^(NEED|PURCHASE_REQUEST|RFQ|PURCHASE_ORDER|CONTRACT|INVOICE|PAYMENT)$"
+        pattern="^(NEED|PURCHASE_REQUEST|OFFER_SELECTION|RFQ|PURCHASE_ORDER|CONTRACT|INVOICE|PAYMENT)$"
     )
     entity_id: uuid.UUID
     execution_mode: str = Field(
@@ -4432,6 +4432,24 @@ def update_purchase_order_status(
     current_status = purchase_order.status
     new_status = payload.status
 
+    if new_status == "APPROVED" and current_status == "SUBMITTED":
+        latest_approval = db.scalar(
+            select(ApprovalRequest)
+            .where(
+                ApprovalRequest.company_id == membership.company_id,
+                ApprovalRequest.entity_type == "PURCHASE_ORDER",
+                ApprovalRequest.entity_id == purchase_order.id,
+            )
+            .order_by(ApprovalRequest.created_at.desc())
+            .limit(1)
+        )
+
+        if latest_approval is not None and latest_approval.status != "APPROVED":
+            raise HTTPException(
+                status_code=409,
+                detail="Purchase Order approval prosesi tamamlanmadan APPROVED statusuna kecirile bilmez.",
+            )
+
     allowed_transitions = {
         "DRAFT": {"SUBMITTED", "CANCELLED"},
         "SUBMITTED": {"APPROVED", "CANCELLED"},
@@ -4560,6 +4578,23 @@ def create_purchase_order_from_selection(
         raise HTTPException(
             status_code=409,
             detail="Offer selection already has a purchase order",
+        )
+
+    latest_approval = db.scalar(
+        select(ApprovalRequest)
+        .where(
+            ApprovalRequest.company_id == membership.company_id,
+            ApprovalRequest.entity_type == "OFFER_SELECTION",
+            ApprovalRequest.entity_id == selection.id,
+        )
+        .order_by(ApprovalRequest.created_at.desc())
+        .limit(1)
+    )
+
+    if latest_approval is not None and latest_approval.status != "APPROVED":
+        raise HTTPException(
+            status_code=409,
+            detail="Offer selection approval prosesi tamamlanmadan Purchase Order yarad\u0131la bilm\u0259z.",
         )
 
     purchase_request = db.scalar(
