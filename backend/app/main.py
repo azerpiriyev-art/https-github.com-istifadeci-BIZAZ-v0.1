@@ -3668,6 +3668,229 @@ def convert_need_to_purchase_request(
 
 
 # ============================================================
+# APPROVAL ENGINE ? REQUEST CREATE
+# ============================================================
+
+@app.post(
+    "/api/v1/approvals/requests",
+    response_model=ApprovalRequestResponseSchema,
+    status_code=201,
+    tags=["approvals"],
+)
+@limiter.limit("60/minute")
+def create_approval_request(
+    request: Request,
+    payload: ApprovalRequestCreateSchema,
+    current_user: User = Depends(
+        require_role(
+            "OWNER",
+            "ADMIN",
+            "PROCUREMENT",
+        )
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(
+        current_user,
+        db,
+    )
+
+    entity_models = {
+        "NEED": Need,
+        "PURCHASE_REQUEST": PurchaseRequest,
+        "SUPPLIER_OFFER": SupplierOffer,
+        "OFFER_SELECTION": OfferSelection,
+        "PURCHASE_ORDER": PurchaseOrder,
+    }
+
+    entity_model = entity_models.get(payload.entity_type)
+
+    if entity_model is None:
+        raise HTTPException(
+            status_code=422,
+            detail="Bu entity_type approval ???n d?st?kl?nmir.",
+        )
+
+    entity = db.scalar(
+        select(entity_model).where(
+            entity_model.id == payload.entity_id,
+            entity_model.company_id == membership.company_id,
+        )
+    )
+
+    if entity is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "message": "Approval obyekti tap?lmad? v? ya bu ?irk?t? aid deyil.",
+                "entity_type": payload.entity_type,
+                "entity_id": str(payload.entity_id),
+            },
+        )
+
+    active_request = db.scalar(
+        select(ApprovalRequest).where(
+            ApprovalRequest.company_id == membership.company_id,
+            ApprovalRequest.entity_type == payload.entity_type,
+            ApprovalRequest.entity_id == payload.entity_id,
+            ApprovalRequest.status.in_(("PENDING", "IN_PROGRESS")),
+        )
+    )
+
+    if active_request is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Bu obyekt ???n aktiv approval sor?usu art?q m?vcuddur.",
+        )
+
+    step_orders = [step.step_order for step in payload.steps]
+
+    if len(step_orders) != len(set(step_orders)):
+        raise HTTPException(
+            status_code=400,
+            detail="Approval step_order d?y?rl?ri t?krar ola bilm?z.",
+        )
+
+    for step in payload.steps:
+        if step.approver_user_id is None and step.approver_role is None:
+            raise HTTPException(
+                status_code=400,
+                detail="H?r approval step ???n approver_user_id v? ya approver_role g?st?rilm?lidir.",
+            )
+
+        if (
+            step.approver_user_id is not None
+            and step.approver_user_id == current_user.id
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail="?stifad??i ?z yaratd??? approval sor?usunu ?z? t?sdiql?yici t?yin ed? bilm?z.",
+            )
+
+        if step.approver_user_id is not None:
+            approver_membership = db.scalar(
+                select(CompanyMember).where(
+                    CompanyMember.company_id == membership.company_id,
+                    CompanyMember.user_id == step.approver_user_id,
+                )
+            )
+
+            if approver_membership is None:
+                raise HTTPException(
+                    status_code=404,
+                    detail={
+                        "message": "Approval t?sdiq?isi bu ?irk?tin ?zv? deyil.",
+                        "approver_user_id": str(step.approver_user_id),
+                    },
+                )
+
+    approval_request = ApprovalRequest(
+        company_id=membership.company_id,
+        entity_type=payload.entity_type,
+        entity_id=payload.entity_id,
+        status="PENDING",
+        execution_mode=payload.execution_mode,
+        decision_mode=payload.decision_mode,
+        priority=payload.priority,
+        policy_key=payload.policy_key,
+        policy_version=payload.policy_version,
+        requested_by=current_user.id,
+        log_metadata={},
+    )
+
+    db.add(approval_request)
+    db.flush()
+
+    for step in payload.steps:
+        db.add(
+            ApprovalStep(
+                approval_request_id=approval_request.id,
+                step_order=step.step_order,
+                status="PENDING",
+                approver_user_id=step.approver_user_id,
+                approver_role=step.approver_role,
+                log_metadata={},
+            )
+        )
+
+    db.flush()
+
+    db.add(
+        AuditLog(
+            company_id=membership.company_id,
+            user_id=current_user.id,
+            action="APPROVAL_REQUEST_CREATED",
+            entity_type="APPROVAL_REQUEST",
+            entity_id=approval_request.id,
+            log_metadata={
+                "approval_request_id": str(approval_request.id),
+                "entity_type": payload.entity_type,
+                "entity_id": str(payload.entity_id),
+                "execution_mode": payload.execution_mode,
+                "decision_mode": payload.decision_mode,
+                "priority": payload.priority,
+                "step_count": len(payload.steps),
+            },
+        )
+    )
+
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Approval sor?usu yarad?lark?n unikal m?lumat toqqu?mas? ba? verdi.",
+        )
+
+    db.refresh(approval_request)
+
+    steps = db.scalars(
+        select(ApprovalStep)
+        .where(
+            ApprovalStep.approval_request_id == approval_request.id,
+        )
+        .order_by(ApprovalStep.step_order)
+    ).all()
+
+    return {
+        "id": approval_request.id,
+        "company_id": approval_request.company_id,
+        "entity_type": approval_request.entity_type,
+        "entity_id": approval_request.entity_id,
+        "status": approval_request.status,
+        "execution_mode": approval_request.execution_mode,
+        "decision_mode": approval_request.decision_mode,
+        "priority": approval_request.priority,
+        "policy_key": approval_request.policy_key,
+        "policy_version": approval_request.policy_version,
+        "requested_by": approval_request.requested_by,
+        "requested_at": approval_request.requested_at,
+        "completed_at": approval_request.completed_at,
+        "metadata": approval_request.log_metadata,
+        "created_at": approval_request.created_at,
+        "updated_at": approval_request.updated_at,
+        "steps": [
+            {
+                "id": step.id,
+                "approval_request_id": step.approval_request_id,
+                "step_order": step.step_order,
+                "status": step.status,
+                "approver_user_id": step.approver_user_id,
+                "approver_role": step.approver_role,
+                "acted_by": step.acted_by,
+                "acted_at": step.acted_at,
+                "comment": step.comment,
+                "metadata": step.log_metadata,
+                "created_at": step.created_at,
+                "updated_at": step.updated_at,
+            }
+            for step in steps
+        ],
+    }
+
+
+# ============================================================
 # PROCUREMENT ? PURCHASE REQUEST CREATE
 # ============================================================
 
