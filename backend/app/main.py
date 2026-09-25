@@ -3235,6 +3235,24 @@ def update_need_status(
             detail=f"Yanlış status keçidi: {current_status} -> {new_status}",
         )
 
+    if new_status == "APPROVED" and current_status == "UNDER_REVIEW":
+        latest_approval = db.scalar(
+            select(ApprovalRequest)
+            .where(
+                ApprovalRequest.company_id == membership.company_id,
+                ApprovalRequest.entity_type == "NEED",
+                ApprovalRequest.entity_id == need.id,
+            )
+            .order_by(ApprovalRequest.created_at.desc())
+            .limit(1)
+        )
+
+        if latest_approval is not None and latest_approval.status != "APPROVED":
+            raise HTTPException(
+                status_code=409,
+                detail="Need approval prosesi tamamlanmadan APPROVED statusuna kecirile bilmez.",
+            )
+
     need.status = new_status
     need.updated_at = datetime.now(timezone.utc)
 
