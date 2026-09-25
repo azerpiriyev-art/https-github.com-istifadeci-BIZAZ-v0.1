@@ -2075,6 +2075,79 @@ class NeedToPRConversionRequestSchema(BaseModel):
     items: list[NeedToPRConversionItemSchema] = Field(min_length=1)
 
 
+class ApprovalStepCreateSchema(BaseModel):
+    step_order: int = Field(gt=0)
+    approver_user_id: uuid.UUID | None = None
+    approver_role: str | None = Field(
+        default=None,
+        min_length=1,
+        max_length=50,
+    )
+
+
+class ApprovalRequestCreateSchema(BaseModel):
+    entity_type: str = Field(
+        pattern="^(NEED|PURCHASE_REQUEST|RFQ|PURCHASE_ORDER|CONTRACT|INVOICE|PAYMENT)$"
+    )
+    entity_id: uuid.UUID
+    execution_mode: str = Field(
+        default="SEQUENTIAL",
+        pattern="^(SEQUENTIAL|PARALLEL)$",
+    )
+    decision_mode: str = Field(
+        default="ALL",
+        pattern="^(ALL|ANY)$",
+    )
+    priority: str = Field(
+        default="NORMAL",
+        pattern="^(LOW|NORMAL|HIGH|URGENT)$",
+    )
+    policy_key: str | None = Field(
+        default=None,
+        max_length=100,
+    )
+    policy_version: str | None = Field(
+        default=None,
+        max_length=50,
+    )
+    steps: list[ApprovalStepCreateSchema] = Field(min_length=1)
+
+
+class ApprovalStepResponseSchema(BaseModel):
+    id: uuid.UUID
+    approval_request_id: uuid.UUID
+    step_order: int
+    status: str
+    approver_user_id: uuid.UUID | None
+    approver_role: str | None
+    acted_by: uuid.UUID | None
+    acted_at: datetime | None
+    comment: str | None
+    metadata: dict
+    created_at: datetime
+    updated_at: datetime
+
+
+class ApprovalRequestResponseSchema(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    entity_type: str
+    entity_id: uuid.UUID
+    status: str
+    execution_mode: str
+    decision_mode: str
+    priority: str
+    policy_key: str | None
+    policy_version: str | None
+    requested_by: uuid.UUID
+    requested_at: datetime
+    completed_at: datetime | None
+    metadata: dict
+    created_at: datetime
+    updated_at: datetime
+    steps: list[ApprovalStepResponseSchema]
+
+
 class PurchaseRequestItemCreateSchema(BaseModel):
     product_id: uuid.UUID
     quantity: Decimal = Field(gt=0)
