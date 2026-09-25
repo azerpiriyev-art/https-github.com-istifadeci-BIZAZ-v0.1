@@ -3907,6 +3907,92 @@ def create_approval_request(
 # APPROVAL ENGINE — DECISION
 # ============================================================
 
+def _approval_eligible_steps(approval_request, steps):
+    pending_steps = [
+        step
+        for step in steps
+        if step.status == "PENDING"
+    ]
+
+    if not pending_steps:
+        return []
+
+    if approval_request.execution_mode == "SEQUENTIAL":
+        first_step = min(
+            pending_steps,
+            key=lambda step: step.step_order,
+        )
+        return [first_step]
+
+    if approval_request.execution_mode == "PARALLEL":
+        return pending_steps
+
+    raise HTTPException(
+        status_code=409,
+        detail="Approval execution_mode etibarsizdir.",
+    )
+
+
+def _approval_find_current_step(
+    eligible_steps,
+    current_user,
+    membership,
+):
+    for step in eligible_steps:
+        if (
+            step.approver_user_id is not None
+            and step.approver_user_id == current_user.id
+        ):
+            return step
+
+    for step in eligible_steps:
+        if (
+            step.approver_user_id is None
+            and step.approver_role is not None
+            and membership.role == step.approver_role
+        ):
+            return step
+
+    return None
+
+
+def _approval_skip_remaining_steps(
+    steps,
+    current_step_id,
+    now,
+):
+    for step in steps:
+        if (
+            step.status == "PENDING"
+            and step.id != current_step_id
+        ):
+            step.status = "SKIPPED"
+            step.updated_at = now
+
+
+def _approval_is_final(
+    approval_request,
+    steps,
+    decision,
+):
+    if decision == "REJECT":
+        return True
+
+    if approval_request.decision_mode == "ANY":
+        return True
+
+    if approval_request.decision_mode == "ALL":
+        return not any(
+            step.status == "PENDING"
+            for step in steps
+        )
+
+    raise HTTPException(
+        status_code=409,
+        detail="Approval decision_mode etibarsizdir.",
+    )
+
+
 @app.post(
     "/api/v1/approvals/{approval_id}/decision",
     tags=["approvals"],
@@ -3925,10 +4011,12 @@ def decide_approval(
     )
 
     approval_request = db.scalar(
-        select(ApprovalRequest).where(
+        select(ApprovalRequest)
+        .where(
             ApprovalRequest.id == approval_id,
             ApprovalRequest.company_id == membership.company_id,
         )
+        .with_for_update()
     )
 
     if approval_request is None:
@@ -3951,35 +4039,28 @@ def decide_approval(
     steps = db.scalars(
         select(ApprovalStep)
         .where(
-            ApprovalStep.approval_request_id == approval_request.id,
-            ApprovalStep.status == "PENDING",
+            ApprovalStep.approval_request_id
+            == approval_request.id,
         )
         .order_by(ApprovalStep.step_order)
     ).all()
 
-    if not steps:
+    eligible_steps = _approval_eligible_steps(
+        approval_request,
+        steps,
+    )
+
+    if not eligible_steps:
         raise HTTPException(
             status_code=409,
             detail="Approval sorğusu üzrə qərar veriləcək aktiv step yoxdur.",
         )
 
-    current_step = None
-
-    for step in steps:
-        if (
-            step.approver_user_id is not None
-            and step.approver_user_id == current_user.id
-        ):
-            current_step = step
-            break
-
-        if (
-            step.approver_user_id is None
-            and step.approver_role is not None
-            and membership.role == step.approver_role
-        ):
-            current_step = step
-            break
+    current_step = _approval_find_current_step(
+        eligible_steps,
+        current_user,
+        membership,
+    )
 
     if current_step is None:
         raise HTTPException(
@@ -3999,28 +4080,35 @@ def decide_approval(
     current_step.comment = payload.comment
     current_step.updated_at = now
 
-    if payload.decision == "REJECT":
-        approval_request.status = "REJECTED"
+    final = _approval_is_final(
+        approval_request,
+        steps,
+        payload.decision,
+    )
+
+    if final:
+        approval_request.status = (
+            "APPROVED"
+            if payload.decision == "APPROVE"
+            else "REJECTED"
+        )
         approval_request.completed_at = now
-        approval_action = "APPROVAL_STEP_REJECTED"
 
+        _approval_skip_remaining_steps(
+            steps,
+            current_step.id,
+            now,
+        )
     else:
-        remaining_steps = [
-            step
-            for step in steps
-            if step.id != current_step.id
-            and step.status == "PENDING"
-        ]
-
-        if remaining_steps:
-            approval_request.status = "IN_PROGRESS"
-            approval_action = "APPROVAL_STEP_APPROVED"
-        else:
-            approval_request.status = "APPROVED"
-            approval_request.completed_at = now
-            approval_action = "APPROVAL_STEP_APPROVED"
+        approval_request.status = "IN_PROGRESS"
 
     approval_request.updated_at = now
+
+    approval_action = (
+        "APPROVAL_STEP_APPROVED"
+        if payload.decision == "APPROVE"
+        else "APPROVAL_STEP_REJECTED"
+    )
 
     db.add(
         AuditLog(
@@ -4034,13 +4122,18 @@ def decide_approval(
                 "approval_step_id": str(current_step.id),
                 "decision": payload.decision,
                 "step_order": current_step.step_order,
+                "actor_user_id": str(current_user.id),
                 "comment": payload.comment,
                 "request_status": approval_request.status,
             },
         )
     )
 
-    db.commit()
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
 
     db.refresh(approval_request)
     db.refresh(current_step)
@@ -4065,6 +4158,7 @@ def decide_approval(
             "completed_at": approval_request.completed_at,
         },
     }
+
 
 @app.post(
     "/api/v1/procurement/purchase-requests",

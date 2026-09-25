@@ -528,3 +528,337 @@ def test_11_already_decided_step_cannot_be_decided_again(
     )
 
     assert second.status_code in (400, 409), second.text
+
+
+def _get_approval_steps(db, approval_id):
+    return db.execute(
+        """
+        SELECT step_order, status
+        FROM approval_steps
+        WHERE approval_request_id = %s
+        ORDER BY step_order
+        """,
+        (uuid.UUID(approval_id),),
+    ).fetchall()
+
+
+def _decision(base_url, auth_headers, approval_id, decision, comment):
+    return requests.post(
+        f"{base_url}/api/v1/approvals/{approval_id}/decision",
+        headers=auth_headers,
+        json={
+            "decision": decision,
+            "comment": comment,
+        },
+        timeout=10,
+    )
+
+
+def test_12_sequential_multi_step_progression(
+    base_url,
+    auth_headers,
+    purchase_request_lifecycle_fixture,
+    test_database_url,
+):
+    request_id = purchase_request_lifecycle_fixture["request_id"]
+    db = psycopg.connect(test_database_url)
+
+    try:
+        response = _create_approval(
+            base_url,
+            auth_headers,
+            request_id,
+            execution_mode="SEQUENTIAL",
+            decision_mode="ALL",
+            steps=[
+                {"step_order": 1, "approver_role": "OWNER"},
+                {"step_order": 2, "approver_role": "OWNER"},
+            ],
+        )
+
+        assert response.status_code == 201, response.text
+        approval_id = response.json()["id"]
+
+        first = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+            "APPROVE",
+            "Sequential step 1",
+        )
+
+        assert first.status_code == 200, first.text
+        assert first.json()["request"]["status"] == "IN_PROGRESS"
+
+        steps = _get_approval_steps(db, approval_id)
+        assert steps == [(1, "APPROVED"), (2, "PENDING")]
+
+        second = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+            "APPROVE",
+            "Sequential step 2",
+        )
+
+        assert second.status_code == 200, second.text
+        assert second.json()["request"]["status"] == "APPROVED"
+
+        steps = _get_approval_steps(db, approval_id)
+        assert steps == [(1, "APPROVED"), (2, "APPROVED")]
+
+    finally:
+        _cleanup_approval(db, request_id)
+        db.close()
+
+
+def test_13_sequential_reject_skips_remaining_steps(
+    base_url,
+    auth_headers,
+    purchase_request_lifecycle_fixture,
+    test_database_url,
+):
+    request_id = purchase_request_lifecycle_fixture["request_id"]
+    db = psycopg.connect(test_database_url)
+
+    try:
+        response = _create_approval(
+            base_url,
+            auth_headers,
+            request_id,
+            execution_mode="SEQUENTIAL",
+            decision_mode="ALL",
+            steps=[
+                {"step_order": 1, "approver_role": "OWNER"},
+                {"step_order": 2, "approver_role": "OWNER"},
+            ],
+        )
+
+        assert response.status_code == 201, response.text
+        approval_id = response.json()["id"]
+
+        rejected = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+            "REJECT",
+            "Sequential rejection",
+        )
+
+        assert rejected.status_code == 200, rejected.text
+        assert rejected.json()["request"]["status"] == "REJECTED"
+
+        steps = _get_approval_steps(db, approval_id)
+        assert steps == [(1, "REJECTED"), (2, "SKIPPED")]
+
+        second = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+            "APPROVE",
+            "Must be blocked",
+        )
+        assert second.status_code == 409, second.text
+
+    finally:
+        _cleanup_approval(db, request_id)
+        db.close()
+
+
+def test_14_parallel_all_requires_all_approvals(
+    base_url,
+    auth_headers,
+    purchase_request_lifecycle_fixture,
+    test_database_url,
+):
+    request_id = purchase_request_lifecycle_fixture["request_id"]
+    db = psycopg.connect(test_database_url)
+
+    try:
+        response = _create_approval(
+            base_url,
+            auth_headers,
+            request_id,
+            execution_mode="PARALLEL",
+            decision_mode="ALL",
+            steps=[
+                {"step_order": 1, "approver_role": "OWNER"},
+                {"step_order": 2, "approver_role": "OWNER"},
+            ],
+        )
+
+        assert response.status_code == 201, response.text
+        approval_id = response.json()["id"]
+
+        first = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+            "APPROVE",
+            "Parallel first",
+        )
+
+        assert first.status_code == 200, first.text
+        assert first.json()["request"]["status"] == "IN_PROGRESS"
+
+        steps = _get_approval_steps(db, approval_id)
+        assert steps == [(1, "APPROVED"), (2, "PENDING")]
+
+        second = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+            "APPROVE",
+            "Parallel second",
+        )
+
+        assert second.status_code == 200, second.text
+        assert second.json()["request"]["status"] == "APPROVED"
+
+    finally:
+        _cleanup_approval(db, request_id)
+        db.close()
+
+
+def test_15_parallel_any_finishes_on_first_approval(
+    base_url,
+    auth_headers,
+    purchase_request_lifecycle_fixture,
+    test_database_url,
+):
+    request_id = purchase_request_lifecycle_fixture["request_id"]
+    db = psycopg.connect(test_database_url)
+
+    try:
+        response = _create_approval(
+            base_url,
+            auth_headers,
+            request_id,
+            execution_mode="PARALLEL",
+            decision_mode="ANY",
+            steps=[
+                {"step_order": 1, "approver_role": "OWNER"},
+                {"step_order": 2, "approver_role": "OWNER"},
+            ],
+        )
+
+        assert response.status_code == 201, response.text
+        approval_id = response.json()["id"]
+
+        first = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+            "APPROVE",
+            "ANY first approval",
+        )
+
+        assert first.status_code == 200, first.text
+        assert first.json()["request"]["status"] == "APPROVED"
+
+        steps = _get_approval_steps(db, approval_id)
+        assert steps == [(1, "APPROVED"), (2, "SKIPPED")]
+
+        second = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+            "APPROVE",
+            "Must be blocked",
+        )
+        assert second.status_code == 409, second.text
+
+    finally:
+        _cleanup_approval(db, request_id)
+        db.close()
+
+
+def test_16_unauthorized_approver_blocked(
+    base_url,
+    auth_headers,
+    purchase_request_lifecycle_fixture,
+    test_database_url,
+):
+    request_id = purchase_request_lifecycle_fixture["request_id"]
+
+    response = _create_approval(
+        base_url,
+        auth_headers,
+        request_id,
+        steps=[
+            {"step_order": 1, "approver_role": "ADMIN"},
+        ],
+    )
+
+    assert response.status_code == 201, response.text
+    approval_id = response.json()["id"]
+
+    try:
+        decision = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+            "APPROVE",
+            "Unauthorized",
+        )
+        assert decision.status_code == 403, decision.text
+    finally:
+        db = psycopg.connect(test_database_url)
+        try:
+            _cleanup_approval(db, request_id)
+        finally:
+            db.close()
+
+
+def test_17_approval_decision_audit_created(
+    base_url,
+    auth_headers,
+    purchase_request_lifecycle_fixture,
+    test_database_url,
+):
+    request_id = purchase_request_lifecycle_fixture["request_id"]
+    db = psycopg.connect(test_database_url)
+
+    try:
+        response = _create_approval(
+            base_url,
+            auth_headers,
+            request_id,
+            steps=[
+                {"step_order": 1, "approver_role": "OWNER"},
+            ],
+        )
+
+        assert response.status_code == 201, response.text
+        approval_id = response.json()["id"]
+
+        decision = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+            "APPROVE",
+            "Audit test",
+        )
+
+        assert decision.status_code == 200, decision.text
+
+        row = db.execute(
+            """
+            SELECT action, user_id
+            FROM audit_log
+            WHERE entity_type = 'APPROVAL_REQUEST'
+              AND entity_id = %s
+              AND action = 'APPROVAL_STEP_APPROVED'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            (uuid.UUID(approval_id),),
+        ).fetchone()
+
+        assert row is not None
+        assert row[0] == "APPROVAL_STEP_APPROVED"
+        assert row[1] is not None
+
+    finally:
+        _cleanup_approval(db, request_id)
+        db.close()
