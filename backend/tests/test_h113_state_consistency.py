@@ -4,12 +4,12 @@ import psycopg
 import requests
 
 
-def _create_approval(base_url, auth_headers, request_id):
+def _create_approval(base_url, auth_headers, request_id, entity_type="PURCHASE_REQUEST"):
     return requests.post(
         f"{base_url}/api/v1/approvals/requests",
         headers=auth_headers,
         json={
-            "entity_type": "PURCHASE_REQUEST",
+            "entity_type": entity_type,
             "entity_id": request_id,
             "execution_mode": "SEQUENTIAL",
             "decision_mode": "ALL",
@@ -211,6 +211,96 @@ def test_h132_01_rejection_does_not_auto_reject_purchase_request(
             WHERE id = %s
             """,
             (uuid.UUID(request_id),),
+        ).fetchone()
+
+        assert after is not None
+        assert after[0] == "SUBMITTED"
+
+    finally:
+        if approval_id is not None:
+            _cleanup(db, approval_id)
+
+        db.close()
+
+
+def test_h133_01_approval_decision_does_not_auto_approve_purchase_order(
+    base_url,
+    auth_headers,
+    purchase_request_po_lifecycle_fixture,
+    test_database_url,
+):
+    fixture = purchase_request_po_lifecycle_fixture
+    selection_id = fixture["selection_id"]
+
+    db = psycopg.connect(test_database_url)
+    db.autocommit = True
+
+    approval_id = None
+    purchase_order_id = None
+
+    try:
+        po_response = requests.post(
+            f"{base_url}/api/v1/procurement/offer-selections/"
+            f"{selection_id}/purchase-order",
+            headers=auth_headers,
+            json={
+                "order_number": f"H1-13-03-{uuid.uuid4().hex[:8].upper()}",
+                "notes": "H1.13 PO business state consistency test",
+            },
+            timeout=10,
+        )
+
+        assert po_response.status_code == 201, po_response.text
+        purchase_order_id = po_response.json()["purchase_order_id"]
+
+        submit_response = requests.post(
+            f"{base_url}/api/v1/purchase-orders/"
+            f"{purchase_order_id}/status",
+            headers=auth_headers,
+            json={"status": "SUBMITTED"},
+            timeout=10,
+        )
+
+        assert submit_response.status_code == 200, submit_response.text
+
+        before = db.execute(
+            """
+            SELECT status
+            FROM purchase_orders
+            WHERE id = %s
+            """,
+            (uuid.UUID(purchase_order_id),),
+        ).fetchone()
+
+        assert before is not None
+        assert before[0] == "SUBMITTED"
+
+        approval_response = _create_approval(
+            base_url,
+            auth_headers,
+            purchase_order_id,
+            "PURCHASE_ORDER",
+        )
+
+        assert approval_response.status_code == 201, approval_response.text
+        approval_id = approval_response.json()["id"]
+
+        decision_response = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+        )
+
+        assert decision_response.status_code == 200, decision_response.text
+        assert decision_response.json()["request"]["status"] == "APPROVED"
+
+        after = db.execute(
+            """
+            SELECT status
+            FROM purchase_orders
+            WHERE id = %s
+            """,
+            (uuid.UUID(purchase_order_id),),
         ).fetchone()
 
         assert after is not None
