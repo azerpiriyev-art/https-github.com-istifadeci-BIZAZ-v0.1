@@ -4322,6 +4322,24 @@ def update_purchase_request_status(
     current_status = purchase_request.status
     new_status = payload.status
 
+    if new_status == "APPROVED" and current_status == "SUBMITTED":
+        latest_approval = db.scalar(
+            select(ApprovalRequest)
+            .where(
+                ApprovalRequest.company_id == membership.company_id,
+                ApprovalRequest.entity_type == "PURCHASE_REQUEST",
+                ApprovalRequest.entity_id == purchase_request.id,
+            )
+            .order_by(ApprovalRequest.created_at.desc())
+            .limit(1)
+        )
+
+        if latest_approval is not None and latest_approval.status != "APPROVED":
+            raise HTTPException(
+                status_code=409,
+                detail="Purchase Request approval prosesi tamamlanmadan APPROVED statusuna kecirile bilmez.",
+            )
+
     allowed_transitions = {
         "DRAFT": {"SUBMITTED", "CANCELLED"},
         "SUBMITTED": {"APPROVED", "CANCELLED"},
