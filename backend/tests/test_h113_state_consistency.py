@@ -311,3 +311,86 @@ def test_h133_01_approval_decision_does_not_auto_approve_purchase_order(
             _cleanup(db, approval_id)
 
         db.close()
+
+def test_h134_01_approval_decision_does_not_auto_approve_need(
+    base_url,
+    auth_headers,
+    test_company_data,
+    test_database_url,
+):
+    from test_h18_need_approval import (
+        _create_need,
+        _move_to_under_review,
+        _cleanup as _cleanup_need,
+    )
+
+    db = psycopg.connect(test_database_url)
+    db.autocommit = True
+
+    need_id = None
+    approval_id = None
+
+    try:
+        need_id = _create_need(
+            base_url,
+            auth_headers,
+            test_company_data,
+        )
+
+        _move_to_under_review(
+            base_url,
+            auth_headers,
+            need_id,
+        )
+
+        before = db.execute(
+            """
+            SELECT status
+            FROM needs
+            WHERE id = %s
+            """,
+            (uuid.UUID(need_id),),
+        ).fetchone()
+
+        assert before is not None
+        assert before[0] == "UNDER_REVIEW"
+
+        approval_response = _create_approval(
+            base_url,
+            auth_headers,
+            need_id,
+            "NEED",
+        )
+
+        assert approval_response.status_code == 201, approval_response.text
+        approval_id = approval_response.json()["id"]
+
+        decision_response = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+        )
+
+        assert decision_response.status_code == 200, decision_response.text
+        assert decision_response.json()["request"]["status"] == "APPROVED"
+
+        after = db.execute(
+            """
+            SELECT status
+            FROM needs
+            WHERE id = %s
+            """,
+            (uuid.UUID(need_id),),
+        ).fetchone()
+
+        assert after is not None
+        assert after[0] == "UNDER_REVIEW"
+
+    finally:
+        if approval_id is not None:
+            _cleanup(db, approval_id)
+
+        if need_id is not None:
+            _cleanup_need(db, need_id)
+
+        db.close()
