@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
-from .models import AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User
+from .models import ApprovalRequest, ApprovalStep, AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User
 
 
 # ============================================================
