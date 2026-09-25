@@ -2087,7 +2087,7 @@ class ApprovalStepCreateSchema(BaseModel):
 
 class ApprovalRequestCreateSchema(BaseModel):
     entity_type: str = Field(
-        pattern="^(NEED|PURCHASE_REQUEST|OFFER_SELECTION|RFQ|PURCHASE_ORDER|CONTRACT|INVOICE|PAYMENT)$"
+        pattern="^(NEED|PURCHASE_REQUEST|SUPPLIER_OFFER|OFFER_SELECTION|RFQ|PURCHASE_ORDER|CONTRACT|INVOICE|PAYMENT)$"
     )
     entity_id: uuid.UUID
     execution_mode: str = Field(
@@ -2740,6 +2740,23 @@ def create_offer_selection(
         raise HTTPException(
             status_code=409,
             detail="An active selection already exists for this purchase request",
+        )
+
+    latest_approval = db.scalar(
+        select(ApprovalRequest)
+        .where(
+            ApprovalRequest.company_id == membership.company_id,
+            ApprovalRequest.entity_type == "SUPPLIER_OFFER",
+            ApprovalRequest.entity_id == supplier_offer.id,
+        )
+        .order_by(ApprovalRequest.created_at.desc())
+        .limit(1)
+    )
+
+    if latest_approval is not None and latest_approval.status != "APPROVED":
+        raise HTTPException(
+            status_code=409,
+            detail="Supplier offer approval prosesi tamamlanmadan Offer Selection yaradila bilmez.",
         )
 
     selection = OfferSelection(
