@@ -1,6 +1,7 @@
 ﻿import os
 import uuid
 
+import pytest
 import psycopg
 import requests
 
@@ -310,10 +311,15 @@ def test_07_approval_request_audit_created(
         db.close()
 
 
+@pytest.mark.parametrize(
+    "entity_type",
+    ["RFQ", "CONTRACT", "INVOICE", "PAYMENT"],
+)
 def test_08_schema_entity_type_without_backend_mapping(
     base_url,
     auth_headers,
     purchase_request_lifecycle_fixture,
+    entity_type,
 ):
     request_id = purchase_request_lifecycle_fixture["request_id"]
 
@@ -321,7 +327,7 @@ def test_08_schema_entity_type_without_backend_mapping(
         f"{base_url}/api/v1/approvals/requests",
         headers=auth_headers,
         json={
-            "entity_type": "RFQ",
+            "entity_type": entity_type,
             "entity_id": request_id,
             "steps": [
                 {
@@ -334,8 +340,6 @@ def test_08_schema_entity_type_without_backend_mapping(
     )
 
     assert response.status_code == 422, response.text
-
-
 
 def _get_approval_request(db, approval_id):
     return db.execute(
