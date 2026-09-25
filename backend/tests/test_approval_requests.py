@@ -334,3 +334,197 @@ def test_08_schema_entity_type_without_backend_mapping(
     )
 
     assert response.status_code == 422, response.text
+
+
+
+def _get_approval_request(db, approval_id):
+    return db.execute(
+        """
+        SELECT id, status, completed_at
+        FROM approval_requests
+        WHERE id = %s
+        """,
+        (uuid.UUID(approval_id),),
+    ).fetchone()
+
+
+def _get_approval_step(db, approval_id, step_order=1):
+    return db.execute(
+        """
+        SELECT
+            id,
+            status,
+            approver_user_id,
+            approver_role,
+            acted_by,
+            acted_at,
+            comment
+        FROM approval_steps
+        WHERE approval_request_id = %s
+          AND step_order = %s
+        """,
+        (uuid.UUID(approval_id), step_order),
+    ).fetchone()
+
+
+def test_09_approval_request_can_be_approved(
+    base_url,
+    auth_headers,
+    purchase_request_lifecycle_fixture,
+    test_database_url,
+):
+    request_id = purchase_request_lifecycle_fixture["request_id"]
+
+    db = psycopg.connect(test_database_url)
+
+    try:
+        response = _create_approval(
+            base_url,
+            auth_headers,
+            request_id,
+            steps=[
+                {
+                    "step_order": 1,
+                    "approver_role": "OWNER",
+                }
+            ],
+        )
+
+        assert response.status_code == 201, response.text
+
+        approval_id = response.json()["id"]
+
+        # Decision endpoint hələ implementasiya edilməyib.
+        response = requests.post(
+            f"{base_url}/api/v1/approvals/{approval_id}/decision",
+            headers=auth_headers,
+            json={
+                "decision": "APPROVE",
+                "comment": "Test approval",
+            },
+            timeout=10,
+        )
+
+        assert response.status_code == 200, response.text
+
+        data = response.json()
+
+        assert data["step"]["status"] == "APPROVED"
+        assert data["request"]["status"] == "APPROVED"
+
+        step = _get_approval_step(db, approval_id)
+
+        assert step is not None
+        assert step[1] == "APPROVED"
+        assert step[4] is not None
+        assert step[5] is not None
+        assert step[6] == "Test approval"
+
+    finally:
+        _cleanup_approval(db, request_id)
+        db.close()
+
+
+def test_10_approval_request_can_be_rejected(
+    base_url,
+    auth_headers,
+    purchase_request_lifecycle_fixture,
+    test_database_url,
+):
+    request_id = purchase_request_lifecycle_fixture["request_id"]
+
+    db = psycopg.connect(test_database_url)
+
+    try:
+        response = _create_approval(
+            base_url,
+            auth_headers,
+            request_id,
+            steps=[
+                {
+                    "step_order": 1,
+                    "approver_role": "OWNER",
+                }
+            ],
+        )
+
+        assert response.status_code == 201, response.text
+
+        approval_id = response.json()["id"]
+
+        response = requests.post(
+            f"{base_url}/api/v1/approvals/{approval_id}/decision",
+            headers=auth_headers,
+            json={
+                "decision": "REJECT",
+                "comment": "Test rejection",
+            },
+            timeout=10,
+        )
+
+        assert response.status_code == 200, response.text
+
+        data = response.json()
+
+        assert data["step"]["status"] == "REJECTED"
+        assert data["request"]["status"] == "REJECTED"
+
+        step = _get_approval_step(db, approval_id)
+
+        assert step is not None
+        assert step[1] == "REJECTED"
+        assert step[4] is not None
+        assert step[5] is not None
+        assert step[6] == "Test rejection"
+
+    finally:
+        _cleanup_approval(db, request_id)
+        db.close()
+
+
+def test_11_already_decided_step_cannot_be_decided_again(
+    base_url,
+    auth_headers,
+    purchase_request_lifecycle_fixture,
+):
+    request_id = purchase_request_lifecycle_fixture["request_id"]
+
+    response = _create_approval(
+        base_url,
+        auth_headers,
+        request_id,
+        steps=[
+            {
+                "step_order": 1,
+                "approver_role": "OWNER",
+            }
+        ],
+    )
+
+    assert response.status_code == 201, response.text
+
+    approval_id = response.json()["id"]
+
+    first = requests.post(
+        f"{base_url}/api/v1/approvals/{approval_id}/decision",
+        headers=auth_headers,
+        json={
+            "decision": "APPROVE",
+            "comment": "First decision",
+        },
+        timeout=10,
+    )
+
+    assert first.status_code == 200, first.text
+
+    second = requests.post(
+        f"{base_url}/api/v1/approvals/{approval_id}/decision",
+        headers=auth_headers,
+        json={
+            "decision": "REJECT",
+            "comment": "Second decision",
+        },
+        timeout=10,
+    )
+
+    assert second.status_code in (400, 409), second.text

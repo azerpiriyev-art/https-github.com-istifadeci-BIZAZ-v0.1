@@ -2113,6 +2113,15 @@ class ApprovalRequestCreateSchema(BaseModel):
     steps: list[ApprovalStepCreateSchema] = Field(min_length=1)
 
 
+class ApprovalDecisionSchema(BaseModel):
+    decision: str = Field(
+        pattern="^(APPROVE|REJECT)$"
+    )
+    comment: str | None = Field(
+        default=None,
+        max_length=5000,
+    )
+
 class ApprovalStepResponseSchema(BaseModel):
     id: uuid.UUID
     approval_request_id: uuid.UUID
@@ -3893,6 +3902,169 @@ def create_approval_request(
 # ============================================================
 # PROCUREMENT ? PURCHASE REQUEST CREATE
 # ============================================================
+
+# ============================================================
+# APPROVAL ENGINE — DECISION
+# ============================================================
+
+@app.post(
+    "/api/v1/approvals/{approval_id}/decision",
+    tags=["approvals"],
+)
+@limiter.limit("60/minute")
+def decide_approval(
+    request: Request,
+    approval_id: uuid.UUID,
+    payload: ApprovalDecisionSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(
+        current_user,
+        db,
+    )
+
+    approval_request = db.scalar(
+        select(ApprovalRequest).where(
+            ApprovalRequest.id == approval_id,
+            ApprovalRequest.company_id == membership.company_id,
+        )
+    )
+
+    if approval_request is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Approval sorğusu tapılmadı və ya bu şirkətə aid deyil.",
+        )
+
+    if approval_request.status in (
+        "APPROVED",
+        "REJECTED",
+        "CANCELLED",
+        "EXPIRED",
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail="Approval sorğusu artıq yekun statusdadır.",
+        )
+
+    steps = db.scalars(
+        select(ApprovalStep)
+        .where(
+            ApprovalStep.approval_request_id == approval_request.id,
+            ApprovalStep.status == "PENDING",
+        )
+        .order_by(ApprovalStep.step_order)
+    ).all()
+
+    if not steps:
+        raise HTTPException(
+            status_code=409,
+            detail="Approval sorğusu üzrə qərar veriləcək aktiv step yoxdur.",
+        )
+
+    current_step = None
+
+    for step in steps:
+        if (
+            step.approver_user_id is not None
+            and step.approver_user_id == current_user.id
+        ):
+            current_step = step
+            break
+
+        if (
+            step.approver_user_id is None
+            and step.approver_role is not None
+            and membership.role == step.approver_role
+        ):
+            current_step = step
+            break
+
+    if current_step is None:
+        raise HTTPException(
+            status_code=403,
+            detail="Bu approval step-i üzrə qərar vermək üçün səlahiyyətiniz yoxdur.",
+        )
+
+    now = datetime.now(timezone.utc)
+
+    current_step.status = (
+        "APPROVED"
+        if payload.decision == "APPROVE"
+        else "REJECTED"
+    )
+    current_step.acted_by = current_user.id
+    current_step.acted_at = now
+    current_step.comment = payload.comment
+    current_step.updated_at = now
+
+    if payload.decision == "REJECT":
+        approval_request.status = "REJECTED"
+        approval_request.completed_at = now
+        approval_action = "APPROVAL_STEP_REJECTED"
+
+    else:
+        remaining_steps = [
+            step
+            for step in steps
+            if step.id != current_step.id
+            and step.status == "PENDING"
+        ]
+
+        if remaining_steps:
+            approval_request.status = "IN_PROGRESS"
+            approval_action = "APPROVAL_STEP_APPROVED"
+        else:
+            approval_request.status = "APPROVED"
+            approval_request.completed_at = now
+            approval_action = "APPROVAL_STEP_APPROVED"
+
+    approval_request.updated_at = now
+
+    db.add(
+        AuditLog(
+            company_id=membership.company_id,
+            user_id=current_user.id,
+            action=approval_action,
+            entity_type="APPROVAL_REQUEST",
+            entity_id=approval_request.id,
+            log_metadata={
+                "approval_request_id": str(approval_request.id),
+                "approval_step_id": str(current_step.id),
+                "decision": payload.decision,
+                "step_order": current_step.step_order,
+                "comment": payload.comment,
+                "request_status": approval_request.status,
+            },
+        )
+    )
+
+    db.commit()
+
+    db.refresh(approval_request)
+    db.refresh(current_step)
+
+    return {
+        "status": "success",
+        "decision": payload.decision,
+        "step": {
+            "id": current_step.id,
+            "approval_request_id": current_step.approval_request_id,
+            "step_order": current_step.step_order,
+            "status": current_step.status,
+            "approver_user_id": current_step.approver_user_id,
+            "approver_role": current_step.approver_role,
+            "acted_by": current_step.acted_by,
+            "acted_at": current_step.acted_at,
+            "comment": current_step.comment,
+        },
+        "request": {
+            "id": approval_request.id,
+            "status": approval_request.status,
+            "completed_at": approval_request.completed_at,
+        },
+    }
 
 @app.post(
     "/api/v1/procurement/purchase-requests",
