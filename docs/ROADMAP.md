@@ -157,3 +157,27 @@ Acceptance evidence:
 - Regression warnings: 84 dependency deprecation warnings; no test failures.
 - Clean Git working tree after checkpoint.
 - Development code checkpoint: 921d2d3.
+
+### 4.23.8 - Python Backend Code Audit & UTF-8 Hardening
+
+Status: Complete / PASS (audited and regression-verified).
+
+Delivered scope:
+
+- Python backend application and test files passed compile-time syntax validation.
+- AST syntax audit passed after removal of an unexpected UTF-8 BOM from `backend/app/models.py`.
+- Duplicate top-level definitions audit found no duplicates.
+- API route audit found no duplicate application routes across the audited backend.
+- Backend behavior remained regression-safe after the encoding cleanup.
+
+Acceptance evidence:
+
+- Python compileall: PASS.
+- AST syntax audit: PASS.
+- Audited Python files: 5.
+- Registered application routes audited: 42.
+- Duplicate top-level definitions: none.
+- Duplicate application routes: none.
+- Full backend regression: 91/91 PASS.
+- Regression warnings: 84 dependency deprecation warnings; no test failures.
+- Development code checkpoint: 2daf1d5.
