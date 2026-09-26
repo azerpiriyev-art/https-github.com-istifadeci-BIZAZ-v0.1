@@ -450,7 +450,7 @@ export default function NewNeedPage() {
 
       const updated: NeedResponse = {
         ...currentNeed,
-        status: data.status || data.new_status || status,
+        status: data.new_status || data.status || status,
         updated_at: data.updated_at || new Date().toISOString(),
       };
 
