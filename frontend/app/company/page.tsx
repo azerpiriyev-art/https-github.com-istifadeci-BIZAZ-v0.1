@@ -456,7 +456,7 @@ export default function CompanyPage() {
               </p>
 
               <p>
-                <strong>Şirkət ID:</strong>{" "}
+                <strong>Şirkət identifikatoru:</strong>{" "}
                 {company.id}
               </p>
             </>
