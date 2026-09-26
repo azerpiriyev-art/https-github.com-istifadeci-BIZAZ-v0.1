@@ -650,7 +650,7 @@ export default function ProductsPage() {
                     <th style={thStyle}>SKU</th>
                     <th style={thStyle}>Kateqoriya</th>
                     <th style={thStyle}>Vahid</th>
-                    <th style={thStyle}>Status</th>
+                    <th style={thStyle}>Vəziyyət</th>
                     <th style={thStyle}>Yaradılıb</th>
 
                     {canWrite && (
@@ -740,7 +740,7 @@ export default function ProductsPage() {
         </section>
 
         <div style={footerStyle}>
-          BIZAZ v0.1 • Product Management
+          BIZAZ v0.1 • Məhsul idarəetməsi
         </div>
       </div>
     </main>
