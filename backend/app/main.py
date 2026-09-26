@@ -187,7 +187,7 @@ def get_current_user(
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=401,
-            detail="Tokenin mudd?ti bitib.",
+            detail="Tokenin müddəti bitib.",
         )
 
     except jwt.InvalidTokenError:
@@ -238,7 +238,7 @@ def get_current_user(
     if not user or not user.is_active:
         raise HTTPException(
             status_code=401,
-            detail="Istifad?ci aktiv deyil v? ya movcud deyil.",
+            detail="İstifadəçi aktiv deyil və ya mövcud deyil.",
         )
 
     return user
@@ -375,7 +375,7 @@ def register_company(
 
         raise HTTPException(
             status_code=422,
-              detail="Yanl?s huquqi forma.",
+              detail="Yanlış hüquqi forma.",
         )
 
     # --------------------------------------------------------
@@ -455,7 +455,7 @@ def register_company(
         "status": "success",
         "message": (
             f"'{data.company_name}' "
-            "sirk?ti ugurla qeydiyyatdan kecdi!"
+            "şirkəti uğurla qeydiyyatdan keçdi!"
         ),
 
         "data": {
@@ -497,7 +497,7 @@ def login_company(
 
         raise HTTPException(
             status_code=401,
-            detail="E-poct v? ya sifr? yanl?sd?r.",
+            detail="E-poçt və ya şifrə yanlışdır.",
         )
 
     # --------------------------------------------------------
@@ -511,7 +511,7 @@ def login_company(
 
         raise HTTPException(
             status_code=401,
-            detail="E-poct v? ya sifr? yanl?sd?r.",
+            detail="E-poçt və ya şifrə yanlışdır.",
         )
 
     # --------------------------------------------------------
@@ -681,7 +681,7 @@ def update_my_company(
     if not membership:
         raise HTTPException(
             status_code=404,
-            detail="?stifad??inin ?irk?t ?zvl?y? tap?lmad?.",
+            detail="İstifadəçinin şirkət üzvlüyü tapılmadı.",
         )
 
     company = db.get(Company, membership.company_id)
@@ -689,7 +689,7 @@ def update_my_company(
     if not company:
         raise HTTPException(
             status_code=404,
-            detail="?irk?t tap?lmad?.",
+            detail="Şirkət tapılmadı.",
         )
 
     changes = {}
@@ -798,7 +798,7 @@ def rbac_test_owner(
 ):
     return {
         "status": "success",
-        "message": "RBAC isl?yir.",
+        "message": "RBAC işləyir.",
         "role_required": "OWNER",
         "user": current_user.email,
     }
@@ -925,7 +925,7 @@ class ProductCreateSchema(BaseModel):
     )
 
     unit: str = Field(
-        default="?d?d",
+        default="\u0259d\u0259d",
         min_length=1,
         max_length=30,
     )
@@ -3494,7 +3494,7 @@ def convert_need_to_purchase_request(
     if len(requested_item_ids) != len(set(requested_item_ids)):
         raise HTTPException(
             status_code=400,
-            detail="Eyni NeedItem bir conversion sor?usunda t?krar g?nd?ril? bilm?z.",
+            detail="Eyni NeedItem bir conversion sorğusunda təkrar göndərilə bilməz.",
         )
 
     locked_items = db.scalars(
@@ -3522,7 +3522,7 @@ def convert_need_to_purchase_request(
         raise HTTPException(
             status_code=404,
             detail={
-                "message": "Bir v? ya daha ?ox NeedItem bu Need-? aid deyil.",
+                "message": "Bir və ya daha çox NeedItem bu Need-ə aid deyil.",
                 "need_item_ids": missing_items,
             },
         )
@@ -3546,7 +3546,7 @@ def convert_need_to_purchase_request(
             raise HTTPException(
                 status_code=400,
                 detail={
-                    "message": "Conversion miqdar? qalan Need miqdar?ndan ?oxdur.",
+                    "message": "Conversion miqdarı qalan Need miqdarından çoxdur.",
                     "need_item_id": str(need_item.id),
                     "requested_quantity": str(payload_item.quantity),
                     "remaining_quantity": str(remaining_quantity),
@@ -3565,7 +3565,7 @@ def convert_need_to_purchase_request(
     if existing_request is not None:
         raise HTTPException(
             status_code=409,
-            detail="Bu request_number art?q m?vcuddur.",
+            detail="Bu request_number artıq mövcuddur.",
         )
 
     purchase_request = PurchaseRequest(
@@ -3694,7 +3694,7 @@ def convert_need_to_purchase_request(
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail="PR yarad?lark?n unikal m?lumat toqqu?mas? ba? verdi.",
+            detail="PR yaradılarkən unikal məlumat toqquşması baş verdi.",
         )
 
     db.refresh(purchase_request)
@@ -3752,7 +3752,7 @@ def create_approval_request(
     if entity_model is None:
         raise HTTPException(
             status_code=422,
-            detail="Bu entity_type approval ???n d?st?kl?nmir.",
+            detail="Bu entity_type approval üçün dəstəklənmir.",
         )
 
     entity = db.scalar(
@@ -3766,7 +3766,7 @@ def create_approval_request(
         raise HTTPException(
             status_code=404,
             detail={
-                "message": "Approval obyekti tap?lmad? v? ya bu ?irk?t? aid deyil.",
+                "message": "Approval obyekti tapılmadı və ya bu şirkətə aid deyil.",
                 "entity_type": payload.entity_type,
                 "entity_id": str(payload.entity_id),
             },
@@ -3784,7 +3784,7 @@ def create_approval_request(
     if active_request is not None:
         raise HTTPException(
             status_code=409,
-            detail="Bu obyekt ???n aktiv approval sor?usu art?q m?vcuddur.",
+            detail="Bu obyekt üçün aktiv approval sorğusu artıq mövcuddur.",
         )
 
     step_orders = [step.step_order for step in payload.steps]
@@ -3792,14 +3792,14 @@ def create_approval_request(
     if len(step_orders) != len(set(step_orders)):
         raise HTTPException(
             status_code=400,
-            detail="Approval step_order d?y?rl?ri t?krar ola bilm?z.",
+            detail="Approval step_order dəyərləri təkrar ola bilməz.",
         )
 
     for step in payload.steps:
         if step.approver_user_id is None and step.approver_role is None:
             raise HTTPException(
                 status_code=400,
-                detail="H?r approval step ???n approver_user_id v? ya approver_role g?st?rilm?lidir.",
+                detail="Hər approval step üçün approver_user_id və ya approver_role göstərilməlidir.",
             )
 
         if (
@@ -3808,7 +3808,7 @@ def create_approval_request(
         ):
             raise HTTPException(
                 status_code=400,
-                detail="?stifad??i ?z yaratd??? approval sor?usunu ?z? t?sdiql?yici t?yin ed? bilm?z.",
+                detail="İstifadəçi öz yaratdığı approval sorğusunu özü təsdiqləyici təyin edə bilməz.",
             )
 
         if step.approver_user_id is not None:
@@ -3823,7 +3823,7 @@ def create_approval_request(
                 raise HTTPException(
                     status_code=404,
                     detail={
-                        "message": "Approval t?sdiq?isi bu ?irk?tin ?zv? deyil.",
+                        "message": "Approval təsdiqçisi bu şirkətin üzvü deyil.",
                         "approver_user_id": str(step.approver_user_id),
                     },
                 )
@@ -3884,7 +3884,7 @@ def create_approval_request(
         db.rollback()
         raise HTTPException(
             status_code=409,
-            detail="Approval sor?usu yarad?lark?n unikal m?lumat toqqu?mas? ba? verdi.",
+            detail="Approval sorğusu yaradılarkən unikal məlumat toqquşması baş verdi.",
         )
 
     db.refresh(approval_request)
@@ -4408,7 +4408,7 @@ def update_purchase_request_status(
     if membership.role not in ("OWNER", "ADMIN", "PROCUREMENT"):
         raise HTTPException(
             status_code=403,
-            detail="Bu ?m?liyyat ???n kifay?t q?d?r s?lahiyy?tiniz yoxdur.",
+            detail="Bu əməliyyat üçün kifayət qədər səlahiyyətiniz yoxdur.",
         )
 
     purchase_request = db.scalar(
@@ -4421,7 +4421,7 @@ def update_purchase_request_status(
     if purchase_request is None:
         raise HTTPException(
             status_code=404,
-            detail="Purchase Request tap?lmad?.",
+            detail="Purchase Request tapılmadı.",
         )
 
     current_status = purchase_request.status
@@ -4456,7 +4456,7 @@ def update_purchase_request_status(
     if new_status not in allowed_transitions.get(current_status, set()):
         raise HTTPException(
             status_code=400,
-            detail=f"Yanl?? status ke?idi: {current_status} -> {new_status}",
+            detail=f"Yanlış status keçidi: {current_status} -> {new_status}",
         )
 
     purchase_request.status = new_status
@@ -4486,7 +4486,7 @@ def update_purchase_request_status(
 
     return {
         "status": "success",
-        "message": "Purchase Request statusu d?yi?dirildi.",
+        "message": "Purchase Request statusu dəyişdirildi.",
         "id": str(purchase_request.id),
         "request_number": purchase_request.request_number,
         "old_status": current_status,
