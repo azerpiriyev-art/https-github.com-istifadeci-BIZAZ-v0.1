@@ -137,7 +137,7 @@ export default function DashboardPage() {
           fontFamily: "Arial, sans-serif",
         }}
       >
-        <p>Dashboard yüklənir...</p>
+        <p>İdarəetmə paneli yüklənir...</p>
       </main>
     );
   }
@@ -195,7 +195,7 @@ export default function DashboardPage() {
               cursor: "pointer",
             }}
           >
-            Giriş səhifəsi
+            Giriş səhifəsinə qayıt
           </button>
         </div>
       </main>
@@ -239,7 +239,7 @@ export default function DashboardPage() {
               color: "#777",
             }}
           >
-            İdarəetmə Paneli
+            İdarəetmə paneli
           </span>
         </div>
 
@@ -307,7 +307,7 @@ export default function DashboardPage() {
             </p>
 
             <p>
-              <strong>Status:</strong>{" "}
+              <strong>Vəziyyət:</strong>{" "}
               {data.user.is_active
                 ? "Aktiv"
                 : "Deaktiv"}
@@ -337,7 +337,7 @@ export default function DashboardPage() {
                 </p>
 
                 <p>
-                  <strong>Şirkət ID:</strong>{" "}
+                  <strong>Şirkət identifikatoru:</strong>{" "}
                   {data.company.id}
                 </p>
               </>
