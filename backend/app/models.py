@@ -1,4 +1,4 @@
-﻿from decimal import Decimal
+from decimal import Decimal
 import uuid
 from datetime import datetime, date
 
