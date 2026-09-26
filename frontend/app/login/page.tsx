@@ -39,18 +39,18 @@ export default function LoginPage() {
             ? data.detail
             : "E-poçt və ya şifrə yanlışdır.";
 
-        setResponseMsg(`Login xətası (${res.status}): ${detail}`);
+        setResponseMsg(`Giriş xətası (${res.status}): ${detail}`);
         return;
       }
 
       if (!data.token) {
-        setResponseMsg("Login uğurludur, lakin token cavabda yoxdur.");
+        setResponseMsg("Giriş uğurludur, lakin token cavabda yoxdur.");
         return;
       }
 
       localStorage.setItem("bizaz_token", data.token);
 
-      setResponseMsg("Uğurla daxil oldunuz! Dashboard açılır...");
+      setResponseMsg("Uğurla daxil oldunuz! İdarəetmə paneli açılır...");
 
       setTimeout(() => {
         router.push("/dashboard");
