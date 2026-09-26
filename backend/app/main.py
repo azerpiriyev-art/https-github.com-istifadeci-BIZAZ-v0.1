@@ -978,6 +978,22 @@ PRODUCT_WRITE_ROLES = {
     "ADMIN",
     "PROCUREMENT",
 }
+# Payment state machine policy.
+# Current payment authorization remains unchanged in this patch.
+# Future roles (FINANCE / ACCOUNTANT / MANAGER) are architectural only.
+PAYMENT_OPERATION_ROLES = {
+    "OWNER",
+    "ADMIN",
+    "PROCUREMENT",
+}
+
+PAYMENT_STATUS_TRANSITIONS = {
+    "PENDING": {"PAID", "FAILED", "CANCELLED"},
+    "PAID": set(),
+    "FAILED": set(),
+    "CANCELLED": set(),
+}
+
 
 
 def get_current_membership(
@@ -5196,6 +5212,11 @@ def create_purchase_order(
     )
 
 
+class PaymentStatusUpdateSchema(BaseModel):
+    status: str = Field(
+        pattern="^(PENDING|PAID|FAILED|CANCELLED)$"
+    )
+
 @app.post("/api/v1/payments", status_code=201, tags=["payments"])
 @limiter.limit("60/minute")
 def create_payment(
@@ -5283,6 +5304,89 @@ def create_payment(
         "updated_at": payment.updated_at,
     }
 
+@app.post(
+    "/api/v1/payments/{payment_id}/status",
+    tags=["payments"],
+)
+@limiter.limit("60/minute")
+def update_payment_status(
+    request: Request,
+    payment_id: uuid.UUID,
+    payload: PaymentStatusUpdateSchema,
+    current_user: User = Depends(
+        require_role(*PAYMENT_OPERATION_ROLES)
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    payment = db.scalar(
+        select(Payment)
+        .where(
+            Payment.id == payment_id,
+            Payment.company_id == membership.company_id,
+        )
+        .with_for_update()
+    )
+
+    if payment is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Payment not found",
+        )
+
+    current_status = payment.status
+    new_status = payload.status
+    allowed_statuses = PAYMENT_STATUS_TRANSITIONS.get(current_status, set())
+
+    if new_status not in allowed_statuses:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid payment status transition: {current_status} -> {new_status}",
+        )
+
+    now = datetime.now(timezone.utc)
+    payment.status = new_status
+    payment.updated_at = now
+
+    if new_status == "PAID":
+        payment.paid_at = now
+    else:
+        payment.paid_at = None
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            company_id=membership.company_id,
+            action="PAYMENT_STATUS_CHANGED",
+            entity_type="payment",
+            entity_id=payment.id,
+            log_metadata={
+                "payment_id": str(payment.id),
+                "purchase_order_id": str(payment.purchase_order_id),
+                "old_status": current_status,
+                "new_status": new_status,
+                "amount": str(payment.amount),
+                "currency": payment.currency,
+            },
+        )
+    )
+
+    db.commit()
+    db.refresh(payment)
+
+    return {
+        "status": "success",
+        "id": str(payment.id),
+        "purchase_order_id": str(payment.purchase_order_id),
+        "old_status": current_status,
+        "new_status": payment.status,
+        "amount": payment.amount,
+        "currency": payment.currency,
+        "reference": payment.reference,
+        "paid_at": payment.paid_at,
+        "updated_at": payment.updated_at,
+    }
 @app.delete(
     "/api/v1/purchase-orders/{purchase_order_id}",
     tags=["purchase-orders"],
