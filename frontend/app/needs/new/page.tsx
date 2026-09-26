@@ -1079,6 +1079,7 @@ export default function NewNeedPage() {
                     </label>
 
                     <div style={styles.buttonRow}>
+                      {approvalPending && (<>
                       <button
                         type="button"
                         onClick={() => void decideApproval("APPROVE")}
@@ -1096,6 +1097,7 @@ export default function NewNeedPage() {
                       >
                         {decisionSaving ? "Göndərilir..." : "REJECT"}
                       </button>
+                      </>) }
 
                       <button
                         type="button"
