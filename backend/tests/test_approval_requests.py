@@ -313,7 +313,7 @@ def test_07_approval_request_audit_created(
 
 @pytest.mark.parametrize(
     "entity_type",
-    ["RFQ", "CONTRACT", "INVOICE", "PAYMENT"],
+    ["RFQ", "CONTRACT", "INVOICE"],
 )
 def test_08_schema_entity_type_without_backend_mapping(
     base_url,

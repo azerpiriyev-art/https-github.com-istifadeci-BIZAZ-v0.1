@@ -3767,6 +3767,7 @@ def create_approval_request(
         "SUPPLIER_OFFER": SupplierOffer,
         "OFFER_SELECTION": OfferSelection,
         "PURCHASE_ORDER": PurchaseOrder,
+        "PAYMENT": Payment,
     }
 
     entity_model = entity_models.get(payload.entity_type)

@@ -432,6 +432,7 @@ def test_247_payment_invalid_status_rejected(base_url, auth_headers, test_compan
         _cleanup_payment(test_database_url, payment["id"])
 
 
+
 def test_248_payment_cross_company_status_blocked(base_url, auth_headers, test_database_url):
     db = psycopg.connect(test_database_url); db.autocommit = True
     payment_id = None
@@ -447,3 +448,194 @@ def test_248_payment_cross_company_status_blocked(base_url, auth_headers, test_d
     finally:
         if payment_id is not None: db.execute("DELETE FROM payments WHERE id = %s", (payment_id,))
         db.close()
+
+
+def _create_payment_approval(base_url, auth_headers, payment_id):
+    return requests.post(
+        f"{base_url}/api/v1/approvals/requests",
+        headers=auth_headers,
+        json={
+            "entity_type": "PAYMENT",
+            "entity_id": payment_id,
+            "execution_mode": "SEQUENTIAL",
+            "decision_mode": "ALL",
+            "priority": "NORMAL",
+            "policy_key": "PAYMENT-APPROVAL",
+            "policy_version": "1.0",
+            "steps": [
+                {
+                    "step_order": 1,
+                    "approver_role": "OWNER",
+                }
+            ],
+        },
+        timeout=10,
+    )
+
+
+def _cleanup_payment_approval(test_database_url, approval_id):
+    db = psycopg.connect(test_database_url)
+    db.autocommit = True
+
+    try:
+        db.execute(
+            """
+            DELETE FROM approval_steps
+            WHERE approval_request_id = %s
+            """,
+            (uuid.UUID(str(approval_id)),),
+        )
+
+        db.execute(
+            """
+            DELETE FROM audit_log
+            WHERE entity_type = 'APPROVAL_REQUEST'
+              AND entity_id = %s
+            """,
+            (uuid.UUID(str(approval_id)),),
+        )
+
+        db.execute(
+            """
+            DELETE FROM approval_requests
+            WHERE id = %s
+            """,
+            (uuid.UUID(str(approval_id)),),
+        )
+    finally:
+        db.close()
+
+
+def test_249_payment_approval_request_success(
+    base_url,
+    auth_headers,
+    test_company_data,
+    test_database_url,
+):
+    payment = _create_payment(base_url, auth_headers, test_company_data)
+    approval_id = None
+
+    try:
+        response = _create_payment_approval(
+            base_url,
+            auth_headers,
+            payment["id"],
+        )
+
+        assert response.status_code == 201, response.text
+
+        data = response.json()
+        approval_id = data["id"]
+
+        assert data["entity_type"] == "PAYMENT"
+        assert data["entity_id"] == payment["id"]
+        assert data["status"] == "PENDING"
+
+    finally:
+        if approval_id is not None:
+            _cleanup_payment_approval(test_database_url, approval_id)
+
+        _cleanup_payment(test_database_url, payment["id"])
+
+
+def test_250_payment_approval_duplicate_blocked(
+    base_url,
+    auth_headers,
+    test_company_data,
+    test_database_url,
+):
+    payment = _create_payment(base_url, auth_headers, test_company_data)
+    approval_id = None
+
+    try:
+        first = _create_payment_approval(
+            base_url,
+            auth_headers,
+            payment["id"],
+        )
+
+        assert first.status_code == 201, first.text
+        approval_id = first.json()["id"]
+
+        second = _create_payment_approval(
+            base_url,
+            auth_headers,
+            payment["id"],
+        )
+
+        assert second.status_code == 409, second.text
+
+    finally:
+        if approval_id is not None:
+            _cleanup_payment_approval(test_database_url, approval_id)
+
+        _cleanup_payment(test_database_url, payment["id"])
+
+
+def test_251_payment_approval_does_not_change_payment_status(
+    base_url,
+    auth_headers,
+    test_company_data,
+    test_database_url,
+):
+    payment = _create_payment(base_url, auth_headers, test_company_data)
+    approval_id = None
+
+    try:
+        create_response = _create_payment_approval(
+            base_url,
+            auth_headers,
+            payment["id"],
+        )
+
+        assert create_response.status_code == 201, create_response.text
+        approval_id = create_response.json()["id"]
+
+        decision = requests.post(
+            f"{base_url}/api/v1/approvals/{approval_id}/decision",
+            headers=auth_headers,
+            json={
+                "decision": "APPROVE",
+                "comment": "Payment approval integration test",
+            },
+            timeout=10,
+        )
+
+        assert decision.status_code == 200, decision.text
+
+        db = psycopg.connect(test_database_url)
+        db.autocommit = True
+
+        try:
+            approval_row = db.execute(
+                """
+                SELECT status
+                FROM approval_requests
+                WHERE id = %s
+                """,
+                (uuid.UUID(approval_id),),
+            ).fetchone()
+
+            payment_row = db.execute(
+                """
+                SELECT status
+                FROM payments
+                WHERE id = %s
+                """,
+                (uuid.UUID(payment["id"]),),
+            ).fetchone()
+
+            assert approval_row is not None
+            assert approval_row[0] == "APPROVED"
+
+            assert payment_row is not None
+            assert payment_row[0] == "PENDING"
+
+        finally:
+            db.close()
+
+    finally:
+        if approval_id is not None:
+            _cleanup_payment_approval(test_database_url, approval_id)
+
+        _cleanup_payment(test_database_url, payment["id"])
