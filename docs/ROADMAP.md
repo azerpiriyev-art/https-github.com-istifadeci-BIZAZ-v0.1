@@ -2,7 +2,7 @@
 
 ## Document control
 
-- Current synchronization: 2026-09-06
+- Current synchronization: 2026-09-26
 - Confirmed version-control baseline: `23d0c80` — `chore: establish BIZAZ v0.1 production baseline`
 - Rule: a stage is complete only with recorded acceptance evidence; a planned capability is not represented as delivered.
 
@@ -92,3 +92,24 @@ Acceptance gates:
 - Authenticated users can complete the 4.23.3 flow in the UI without direct API calls.
 - API errors, loading states, and forbidden actions have usable UI handling.
 - The production frontend build passes and the flow is verified against an integration environment.
+
+## 4.23.5 - Need & Approval Engine and control hardening
+
+Status: Complete / PASS (delivered and regression-verified).
+
+Delivered scope:
+
+- Need creation, lifecycle, and Need -> Purchase Request conversion.
+- Approval engine database/models, request API, decision API, and response schemas.
+- Approval gates integrated for Purchase Request, Supplier Offer, Offer Selection, Purchase Order, and Need.
+- Cross-company isolation and unsupported-entity handling covered by automated tests.
+- Approval audit integrity and unauthorized-action behavior covered by automated tests.
+- Domain-state consistency covered: approval decisions do not implicitly mutate controlled business state.
+- Terminal-status and stale/re-approval precedence behavior covered for integrated approval gates.
+- Approval request detail read endpoint and cross-company detail isolation covered.
+
+Acceptance evidence:
+
+- Current full backend regression: 91 passed.
+- Current regression warning count: 84 dependency deprecation warnings; no test failures.
+- Development checkpoint before this documentation update: dad115d.

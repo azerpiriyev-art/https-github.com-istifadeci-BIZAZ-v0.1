@@ -62,3 +62,26 @@ PASS when this documentation commit is present and the working tree is clean. Th
 - recorded/approved operational evidence from a fresh live verification;
 - implemented baseline features from MVP-planned features; and
 - completed 4.18–4.22.9 governance work from the 4.23 product-development plan.
+
+## 4.23.5 - Need & Approval Engine and control hardening
+
+**Status: PASS**
+
+The delivered post-4.23.4 development slice covers the Need Engine and Approval Engine plus integration and security hardening.
+
+Confirmed implementation areas:
+
+- Need creation, status lifecycle, and Need -> Purchase Request conversion.
+- Approval request and approval decision APIs.
+- Approval integration for Need, Purchase Request, Supplier Offer, Offer Selection, and Purchase Order.
+- Cross-company isolation, unsupported approval entities, audit integrity, and unauthorized decision coverage.
+- Approval/domain-state consistency and terminal-status controls.
+- Re-approval precedence for the integrated business gates.
+- Approval request detail retrieval and cross-company detail isolation.
+
+Verification evidence:
+
+- Targeted H1.19 tests: 2/2 PASS.
+- Full backend regression: 91/91 PASS.
+- Regression warnings: 84 dependency deprecation warnings; no failures.
+- Development checkpoint before this documentation update: dad115d.
