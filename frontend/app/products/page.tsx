@@ -390,7 +390,7 @@ export default function ProductsPage() {
               onClick={() => router.push("/dashboard")}
               style={backButtonStyle}
             >
-              ← Dashboard
+              ← İdarəetmə paneli
             </button>
 
             <h1 style={titleStyle}>Məhsullar</h1>

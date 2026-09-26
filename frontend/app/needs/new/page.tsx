@@ -632,7 +632,7 @@ export default function NewNeedPage() {
 
         <div style={styles.headerActions}>
           <button type="button" onClick={() => router.push("/dashboard")} style={styles.secondaryButton}>
-            Dashboard
+            İdarəetmə paneli
           </button>
           <button
             type="button"
@@ -1023,7 +1023,7 @@ export default function NewNeedPage() {
                     }
                     style={styles.primaryButton}
                   >
-                    {approvalSaving ? "Yaradılır..." : "Approval request yarat"}
+                    {approvalSaving ? "Yaradılır..." : "Təsdiq sorğusu yarat"}
                   </button>
                 </div>
               ) : (
@@ -1086,7 +1086,7 @@ export default function NewNeedPage() {
                         disabled={decisionSaving || !approvalPending}
                         style={styles.successButton}
                       >
-                        {decisionSaving ? "Göndərilir..." : "APPROVE"}
+                        {decisionSaving ? "Göndərilir..." : "Təsdiqlə"}
                       </button>
 
                       <button
@@ -1095,7 +1095,7 @@ export default function NewNeedPage() {
                         disabled={decisionSaving || !approvalPending}
                         style={styles.dangerButton}
                       >
-                        {decisionSaving ? "Göndərilir..." : "REJECT"}
+                        {decisionSaving ? "Göndərilir..." : "İmtina et"}
                       </button>
                       </>) }
 
@@ -1105,7 +1105,7 @@ export default function NewNeedPage() {
                         disabled={approvalSaving}
                         style={styles.secondaryButton}
                       >
-                        {approvalSaving ? "Yüklənir..." : "Approval-ı yenilə"}
+                        {approvalSaving ? "Yüklənir..." : "Təsdiq sorğusunu yenilə"}
                       </button>
                     </div>
                   </div>
