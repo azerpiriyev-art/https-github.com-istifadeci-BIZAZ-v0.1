@@ -347,6 +347,32 @@ export default function DashboardPage() {
               </p>
             )}
           </div>
+          <div
+            style={{
+              background: "#ffffff",
+              padding: "25px",
+              borderRadius: "10px",
+              border: "1px solid #ddd",
+            }}
+          >
+            <h3>Tələbat</h3>
+            <p>Yeni təlabat yaradın.</p>
+            <button
+              onClick={() => router.push("/needs/new")}
+              style={{
+                marginTop: "10px",
+                padding: "10px 18px",
+                background: "#198754",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+              }}
+            >
+              Tələbat yarat
+            </button>
+          </div>
+
         </div>
       </section>
     </main>
