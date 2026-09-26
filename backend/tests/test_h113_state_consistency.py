@@ -457,3 +457,66 @@ def test_h135_01_approval_decision_does_not_change_supplier_offer_state(
             _cleanup(db, approval_id)
 
         db.close()
+
+def test_h136_01_approval_decision_does_not_change_offer_selection_state(
+    base_url,
+    auth_headers,
+    purchase_request_po_lifecycle_fixture,
+    test_database_url,
+):
+    selection_id = purchase_request_po_lifecycle_fixture["selection_id"]
+
+    db = psycopg.connect(test_database_url)
+    db.autocommit = True
+
+    approval_id = None
+
+    try:
+        before = db.execute(
+            """
+            SELECT status
+            FROM offer_selections
+            WHERE id = %s
+            """,
+            (uuid.UUID(selection_id),),
+        ).fetchone()
+
+        assert before is not None
+        assert before[0] == "SELECTED"
+
+        approval_response = _create_approval(
+            base_url,
+            auth_headers,
+            selection_id,
+            "OFFER_SELECTION",
+        )
+
+        assert approval_response.status_code == 201, approval_response.text
+        approval_id = approval_response.json()["id"]
+
+        decision_response = _decision(
+            base_url,
+            auth_headers,
+            approval_id,
+        )
+
+        assert decision_response.status_code == 200, decision_response.text
+        assert decision_response.json()["request"]["status"] == "APPROVED"
+
+        after = db.execute(
+            """
+            SELECT status
+            FROM offer_selections
+            WHERE id = %s
+            """,
+            (uuid.UUID(selection_id),),
+        ).fetchone()
+
+        assert after is not None
+        assert after[0] == "SELECTED"
+
+    finally:
+        if approval_id is not None:
+            _cleanup(db, approval_id)
+
+        db.close()
