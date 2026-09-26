@@ -55,6 +55,26 @@ const emptyItem = (): RequestItem => ({
   notes: '',
 });
 
+
+function statusLabel(status: string): string {
+  switch (status) {
+    case "DRAFT":
+      return "Qaralama";
+    case "SUBMITTED":
+      return "Təqdim edilib";
+    case "APPROVED":
+      return "Təsdiqlənib";
+    case "REJECTED":
+      return "İmtina edilib";
+    case "CANCELLED":
+      return "Ləğv edilib";
+    case "UNDER_REVIEW":
+      return "Yoxlamadadır";
+    default:
+      return status;
+  }
+}
+
 export default function PurchaseRequestsPage() {
   const [products, setProducts] = useState<Product[]>([]);
   const [requestNumber, setRequestNumber] = useState('');
@@ -264,7 +284,7 @@ export default function PurchaseRequestsPage() {
       <div style={styles.container}>
         <div style={styles.header}>
           <div>
-            <div style={styles.eyebrow}>BIZAZ • PROCUREMENT</div>
+            <div style={styles.eyebrow}>BIZAZ • SATINALMA</div>
             <h1 style={styles.title}>Satınalma sorğusu</h1>
             <p style={styles.subtitle}>
               Təchizatçılardan təklif toplamaq üçün yeni satınalma sorğusu yaradın.
@@ -327,7 +347,7 @@ export default function PurchaseRequestsPage() {
                   </div>
 
                   <span style={styles.statusBadge}>
-                    {request.status}
+                    {statusLabel(request.status)}
                   </span>
                 </button>
               ))}
@@ -359,7 +379,7 @@ export default function PurchaseRequestsPage() {
               </label>
 
               <label style={styles.label}>
-                Status
+                Vəziyyət
                 <input value="Qaralama / Təqdim" readOnly style={{ ...styles.input, background: '#f9fafb' }} />
               </label>
             </div>
