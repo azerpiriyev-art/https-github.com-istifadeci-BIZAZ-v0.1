@@ -113,3 +113,28 @@ Acceptance evidence:
 - Current full backend regression: 91 passed.
 - Current regression warning count: 84 dependency deprecation warnings; no test failures.
 - Development checkpoint before this documentation update: dad115d.
+
+### 4.23.6 - Need & Approval Frontend Integration
+
+Status: Complete / PASS (implemented and manually verified).
+
+Delivered scope:
+
+- Need creation frontend is available at `/needs/new`.
+- Dashboard provides navigation to the Need creation flow.
+- Frontend API references are unified to port 8001.
+- Need lifecycle is usable through the frontend: DRAFT -> SUBMITTED -> UNDER_REVIEW -> APPROVED.
+- Need approval request creation, approval detail retrieval, and approval decision are available in the frontend.
+- Approval completion does not implicitly change the Need domain status.
+- Explicit Need approval action changes the Need from UNDER_REVIEW to APPROVED.
+- Terminal approval UI hides approve/reject actions after the approval is completed.
+
+Acceptance evidence:
+
+- Manual browser verification of Need creation and lifecycle: PASS.
+- Manual verification of Approval creation and approval decision: PASS.
+- Manual verification of explicit Need approval after approval decision: PASS.
+- Terminal approval UI behavior: PASS.
+- Next.js production build: PASS (13/13 routes).
+- Backend full regression: 91/91 PASS.
+- Development code checkpoint: 9ff508a.

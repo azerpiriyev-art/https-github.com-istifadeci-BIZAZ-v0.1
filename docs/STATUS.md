@@ -85,3 +85,29 @@ Verification evidence:
 - Full backend regression: 91/91 PASS.
 - Regression warnings: 84 dependency deprecation warnings; no failures.
 - Development checkpoint before this documentation update: dad115d.
+
+## 4.23.6 - Need & Approval Frontend Integration
+
+**Status: PASS**
+
+The Need and Approval frontend integration is implemented and manually verified against the running BIZAZ environment.
+
+Confirmed implementation areas:
+
+- Need creation UI at `/needs/new`.
+- Dashboard navigation to the Need creation flow.
+- Unified frontend API port configuration at 8001.
+- Need lifecycle controls from DRAFT through SUBMITTED, UNDER_REVIEW, and APPROVED.
+- Approval request creation, detail retrieval, and approval decision controls.
+- Explicit separation between approval decision and Need domain-state transition.
+- Explicit Need approval action after an approval request is approved.
+- Terminal approval UI hides APPROVE/REJECT actions after completion.
+
+Verification evidence:
+
+- Browser verification of the Need lifecycle: PASS.
+- Browser verification of Approval creation and decision: PASS.
+- Browser verification of explicit Need approval: PASS.
+- Next.js production build: 13/13 PASS.
+- Full backend regression: 91/91 PASS.
+- Code checkpoint: 9ff508a.
