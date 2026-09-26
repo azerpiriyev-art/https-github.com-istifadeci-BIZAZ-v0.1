@@ -990,7 +990,7 @@ export default function NewNeedPage() {
             <section style={styles.card}>
               <div style={styles.sectionHeader}>
                 <div>
-                  <h2 style={styles.sectionTitle}>Approval</h2>
+                  <h2 style={styles.sectionTitle}>Təsdiq</h2>
                   <div style={styles.hint}>
                     Approval qərarı ayrıca verilir; qərarın ardından Need statusı ayrıca dəyişdirilir.
                   </div>
@@ -1030,7 +1030,7 @@ export default function NewNeedPage() {
                 <>
                   <div style={styles.approvalSummary}>
                     <div>
-                      <strong>Approval ID</strong>
+                      <strong>Təsdiq sorğusu ID-si</strong>
                       <div style={styles.mono}>{approval.id}</div>
                     </div>
                     <div>
@@ -1048,7 +1048,7 @@ export default function NewNeedPage() {
                   </div>
 
                   <div style={{ marginTop: 20 }}>
-                    <h3 style={styles.subTitle}>Approval addımları</h3>
+                    <h3 style={styles.subTitle}>Təsdiq addımları</h3>
                     {approval.steps.map((step) => (
                       <div key={step.id} style={styles.stepCard}>
                         <div>

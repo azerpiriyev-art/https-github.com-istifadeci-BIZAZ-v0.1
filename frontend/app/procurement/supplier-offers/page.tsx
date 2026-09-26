@@ -331,7 +331,7 @@ export default function SupplierOffersPage() {
           <span>→</span>
           <span>4. Seçim</span>
           <span>→</span>
-          <span>5. Purchase Order</span>
+          <span>5. Satınalma sifarişi</span>
         </div>
 
         {message && <div style={styles.success}>{message}</div>}
