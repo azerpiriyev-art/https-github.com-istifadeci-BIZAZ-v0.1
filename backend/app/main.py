@@ -3942,6 +3942,76 @@ def create_approval_request(
 # APPROVAL ENGINE — DECISION
 # ============================================================
 
+@app.get(
+    "/api/v1/approvals/requests/{approval_id}",
+    response_model=ApprovalRequestResponseSchema,
+    tags=["approvals"],
+)
+@limiter.limit("60/minute")
+def get_approval_request(
+    request: Request,
+    approval_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    approval_request = db.scalar(
+        select(ApprovalRequest).where(
+            ApprovalRequest.id == approval_id,
+            ApprovalRequest.company_id == membership.company_id,
+        )
+    )
+
+    if approval_request is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Approval sor\u0111usu tap\u0131lmad\u0131 v\u0259 ya bu \u015firk\u0259t\u0259 aid deyil.",
+        )
+
+    steps = db.scalars(
+        select(ApprovalStep)
+        .where(ApprovalStep.approval_request_id == approval_request.id)
+        .order_by(ApprovalStep.step_order)
+    ).all()
+
+    return {
+        "id": approval_request.id,
+        "company_id": approval_request.company_id,
+        "entity_type": approval_request.entity_type,
+        "entity_id": approval_request.entity_id,
+        "status": approval_request.status,
+        "execution_mode": approval_request.execution_mode,
+        "decision_mode": approval_request.decision_mode,
+        "priority": approval_request.priority,
+        "policy_key": approval_request.policy_key,
+        "policy_version": approval_request.policy_version,
+        "requested_by": approval_request.requested_by,
+        "requested_at": approval_request.requested_at,
+        "completed_at": approval_request.completed_at,
+        "metadata": approval_request.log_metadata,
+        "created_at": approval_request.created_at,
+        "updated_at": approval_request.updated_at,
+        "steps": [
+            {
+                "id": step.id,
+                "approval_request_id": step.approval_request_id,
+                "step_order": step.step_order,
+                "status": step.status,
+                "approver_user_id": step.approver_user_id,
+                "approver_role": step.approver_role,
+                "acted_by": step.acted_by,
+                "acted_at": step.acted_at,
+                "comment": step.comment,
+                "metadata": step.log_metadata,
+                "created_at": step.created_at,
+                "updated_at": step.updated_at,
+            }
+            for step in steps
+        ],
+    }
+
+
 def _approval_eligible_steps(approval_request, steps):
     pending_steps = [
         step
