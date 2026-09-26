@@ -356,7 +356,7 @@ export default function DashboardPage() {
             }}
           >
             <h3>Tələbat</h3>
-            <p>Yeni təlabat yaradın.</p>
+            <p>Yeni tələbat yaradın.</p>
             <button
               onClick={() => router.push("/needs/new")}
               style={{
