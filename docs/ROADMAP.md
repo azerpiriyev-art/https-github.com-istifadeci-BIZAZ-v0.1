@@ -138,3 +138,22 @@ Acceptance evidence:
 - Next.js production build: PASS (13/13 routes).
 - Backend full regression: 91/91 PASS.
 - Development code checkpoint: 9ff508a.
+
+### 4.23.7 - Frontend Localization
+
+Status: Complete / PASS (implemented and regression-verified).
+
+Delivered scope:
+
+- User-visible frontend action and navigation texts localized to Azerbaijani.
+- Home, Dashboard, Login, Company, Products, Purchase Requests, Need/Approval, and Supplier Offers frontend texts were reviewed and localized.
+- Approval and Purchase Order display labels were localized without changing backend/API enum values or code identifiers.
+- Frontend localization changes were kept isolated from business logic and API contracts.
+
+Acceptance evidence:
+
+- Next.js production build: PASS (13/13 routes).
+- Full backend regression: 91/91 PASS.
+- Regression warnings: 84 dependency deprecation warnings; no test failures.
+- Clean Git working tree after checkpoint.
+- Development code checkpoint: 921d2d3.

@@ -111,3 +111,24 @@ Verification evidence:
 - Next.js production build: 13/13 PASS.
 - Full backend regression: 91/91 PASS.
 - Code checkpoint: 9ff508a.
+
+## 4.23.7 - Frontend Localization
+
+**Status: PASS**
+
+The frontend localization slice is implemented and regression-verified.
+
+Confirmed implementation areas:
+
+- User-visible frontend texts localized to Azerbaijani across the reviewed application pages.
+- Approval display labels localized without changing API decision values.
+- Purchase Order display label localized without changing backend identifiers.
+- No business-logic or API-contract changes were introduced by the localization slice.
+
+Verification evidence:
+
+- Next.js production build: 13/13 PASS.
+- Full backend regression: 91/91 PASS.
+- Regression warnings: 84 dependency deprecation warnings; no failures.
+- Git working tree was clean before documentation update.
+- Code checkpoint: 921d2d3.
