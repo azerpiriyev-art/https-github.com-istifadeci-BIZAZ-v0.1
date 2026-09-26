@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
-from .models import ApprovalRequest, ApprovalStep, AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User
+from .models import ApprovalRequest, ApprovalStep, AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Payment, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User
 
 
 # ============================================================
@@ -3074,6 +3074,12 @@ class PurchaseOrderStatusUpdateSchema(BaseModel):
     )
 
 
+class PaymentCreateSchema(BaseModel):
+    purchase_order_id: str
+    amount: Decimal = Field(gt=0)
+    currency: str = Field(min_length=3, max_length=3)
+    reference: str | None = Field(default=None, max_length=100)
+
 class PurchaseOrderStatusResponseSchema(BaseModel):
     status: str
     message: str
@@ -5189,6 +5195,93 @@ def create_purchase_order(
         ],
     )
 
+
+@app.post("/api/v1/payments", status_code=201, tags=["payments"])
+@limiter.limit("60/minute")
+def create_payment(
+    request: Request,
+    payload: PaymentCreateSchema,
+    current_user: User = Depends(
+        require_role("OWNER", "ADMIN", "PROCUREMENT")
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    try:
+        purchase_order_id = uuid.UUID(payload.purchase_order_id)
+    except (ValueError, AttributeError):
+        raise HTTPException(
+            status_code=422,
+            detail="Invalid purchase_order_id",
+        )
+
+    purchase_order = db.execute(
+        select(PurchaseOrder).where(
+            PurchaseOrder.id == purchase_order_id,
+            PurchaseOrder.company_id == membership.company_id,
+        )
+    ).scalar_one_or_none()
+
+    if purchase_order is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Purchase order not found",
+        )
+
+    currency = payload.currency.strip().upper()
+    po_currency = (purchase_order.currency or "").strip().upper()
+
+    if currency != po_currency:
+        raise HTTPException(
+            status_code=422,
+            detail="Payment currency must match purchase order currency",
+        )
+
+    payment = Payment(
+        company_id=membership.company_id,
+        purchase_order_id=purchase_order.id,
+        amount=payload.amount,
+        currency=currency,
+        status="PENDING",
+        reference=payload.reference,
+    )
+
+    db.add(payment)
+    db.flush()
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            company_id=membership.company_id,
+            action="PAYMENT_CREATED",
+            entity_type="payment",
+            entity_id=payment.id,
+            log_metadata={
+                "purchase_order_id": str(purchase_order.id),
+                "order_number": purchase_order.order_number,
+                "amount": str(payment.amount),
+                "currency": payment.currency,
+                "status": payment.status,
+            },
+        )
+    )
+
+    db.commit()
+    db.refresh(payment)
+
+    return {
+        "id": str(payment.id),
+        "company_id": str(payment.company_id),
+        "purchase_order_id": str(payment.purchase_order_id),
+        "amount": payment.amount,
+        "currency": payment.currency,
+        "status": payment.status,
+        "reference": payment.reference,
+        "paid_at": payment.paid_at,
+        "created_at": payment.created_at,
+        "updated_at": payment.updated_at,
+    }
 
 @app.delete(
     "/api/v1/purchase-orders/{purchase_order_id}",
