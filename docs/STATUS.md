@@ -156,3 +156,26 @@ Verification evidence:
 - Full backend regression: 91/91 PASS.
 - Regression warnings: 84 dependency deprecation warnings; no failures.
 - Code checkpoint: 2daf1d5.
+
+## 4.23.9 - UTF-8 Encoding Hardening
+
+**Status: PASS**
+
+The UTF-8 encoding hardening slice is complete and regression-verified.
+
+Confirmed implementation areas:
+
+- Azerbaijani backend messages restored to valid UTF-8.
+- Corrupted `?d?d` product unit default restored to `?d?d`.
+- UTF-8 BOM markers removed from the audited affected files.
+- No business-logic or API-contract changes introduced.
+
+Verification evidence:
+
+- Corrupted-string audit: PASS.
+- BOM audit: PASS.
+- U+FFFD audit: PASS.
+- Python compileall: PASS.
+- Full backend regression: 91/91 PASS.
+- Regression warnings: 84 dependency deprecation warnings; no failures.
+- Code checkpoint: c7a8997.
