@@ -10,6 +10,7 @@ class Settings(BaseSettings):
     jwt_secret: str
     jwt_expire_minutes: int = 30
     cors_origins: str = "http://localhost:3000"
+    bizaz_test_mode: bool = False
 
     model_config = SettingsConfigDict(
         env_file=BASE_DIR / ".env",
