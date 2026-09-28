@@ -380,6 +380,21 @@ def register_company(
         )
 
     # --------------------------------------------------------
+    # Validate unique tax ID
+    # --------------------------------------------------------
+
+    if data.tax_id is not None:
+        existing_company = db.scalar(
+            select(Company).where(Company.tax_id == data.tax_id)
+        )
+
+        if existing_company:
+            raise HTTPException(
+                status_code=409,
+                detail="Bu VÖEN artıq başqa şirkətə məxsusdur.",
+            )
+
+    # --------------------------------------------------------
     # Create user
     # --------------------------------------------------------
 
@@ -405,7 +420,23 @@ def register_company(
     db.add(user)
     db.add(company)
 
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+
+        if data.tax_id is not None:
+            existing_company = db.scalar(
+                select(Company).where(Company.tax_id == data.tax_id)
+            )
+
+            if existing_company:
+                raise HTTPException(
+                    status_code=409,
+                    detail="Bu VÖEN artıq başqa şirkətə məxsusdur.",
+                )
+
+        raise
 
     # --------------------------------------------------------
     # Create company membership
