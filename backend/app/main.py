@@ -5271,10 +5271,12 @@ def create_payment(
         )
 
     purchase_order = db.execute(
-        select(PurchaseOrder).where(
+        select(PurchaseOrder)
+        .where(
             PurchaseOrder.id == purchase_order_id,
             PurchaseOrder.company_id == membership.company_id,
         )
+        .with_for_update()
     ).scalar_one_or_none()
 
     if purchase_order is None:
@@ -5284,6 +5286,26 @@ def create_payment(
         )
 
     currency = payload.currency.strip().upper()
+
+    po_total = purchase_order.total_amount or Decimal("0")
+
+    active_payment_total = db.scalar(
+        select(func.coalesce(func.sum(Payment.amount), 0))
+        .where(
+            Payment.purchase_order_id == purchase_order.id,
+            Payment.company_id == membership.company_id,
+            Payment.status.in_(("PENDING", "PAID")),
+        )
+    )
+
+    active_payment_total = Decimal(str(active_payment_total or 0))
+
+    if active_payment_total + payload.amount > po_total:
+        raise HTTPException(
+            status_code=400,
+            detail="Payment amount exceeds the remaining purchase order balance",
+        )
+
     po_currency = (purchase_order.currency or "").strip().upper()
 
     if currency != po_currency:

@@ -639,3 +639,160 @@ def test_251_payment_approval_does_not_change_payment_status(
             _cleanup_payment_approval(test_database_url, approval_id)
 
         _cleanup_payment(test_database_url, payment["id"])
+
+def test_payment_limit_direct_oversize(base_url, auth_headers, test_company_data):
+    po = _create_approved_po(base_url, auth_headers, test_company_data)
+
+    response = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 119,
+            "currency": "AZN",
+        },
+        timeout=10,
+    )
+
+    assert response.status_code == 400, response.text
+    assert "remaining purchase order balance" in response.text
+
+
+def test_payment_limit_cumulative_oversize(base_url, auth_headers, test_company_data):
+    po = _create_approved_po(base_url, auth_headers, test_company_data)
+
+    first = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 100,
+            "currency": "AZN",
+        },
+        timeout=10,
+    )
+    assert first.status_code == 201, first.text
+
+    second = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 19,
+            "currency": "AZN",
+        },
+        timeout=10,
+    )
+
+    assert second.status_code == 400, second.text
+
+
+def test_payment_limit_exact_remaining_amount(
+    base_url, auth_headers, test_company_data
+):
+    po = _create_approved_po(base_url, auth_headers, test_company_data)
+
+    first = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 100,
+            "currency": "AZN",
+        },
+        timeout=10,
+    )
+    assert first.status_code == 201, first.text
+
+    second = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 18,
+            "currency": "AZN",
+        },
+        timeout=10,
+    )
+
+    assert second.status_code == 201, second.text
+
+
+def test_payment_limit_releases_failed_payment(
+    base_url, auth_headers, test_company_data
+):
+    po = _create_approved_po(base_url, auth_headers, test_company_data)
+
+    first = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 100,
+            "currency": "AZN",
+        },
+        timeout=10,
+    )
+    assert first.status_code == 201, first.text
+    payment_id = first.json()["id"]
+
+    failed = requests.post(
+        f"{base_url}/api/v1/payments/{payment_id}/status",
+        headers=auth_headers,
+        json={"status": "FAILED"},
+        timeout=10,
+    )
+    assert failed.status_code == 200, failed.text
+
+    second = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 19,
+            "currency": "AZN",
+        },
+        timeout=10,
+    )
+
+    assert second.status_code == 201, second.text
+
+
+def test_payment_limit_keeps_paid_payment(
+    base_url, auth_headers, test_company_data
+):
+    po = _create_approved_po(base_url, auth_headers, test_company_data)
+
+    first = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 100,
+            "currency": "AZN",
+        },
+        timeout=10,
+    )
+    assert first.status_code == 201, first.text
+    payment_id = first.json()["id"]
+
+    paid = requests.post(
+        f"{base_url}/api/v1/payments/{payment_id}/status",
+        headers=auth_headers,
+        json={"status": "PAID"},
+        timeout=10,
+    )
+    assert paid.status_code == 200, paid.text
+
+    second = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 19,
+            "currency": "AZN",
+        },
+        timeout=10,
+    )
+
+    assert second.status_code == 400, second.text
