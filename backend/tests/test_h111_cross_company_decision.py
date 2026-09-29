@@ -4,14 +4,12 @@ import psycopg
 import requests
 
 
-CROSS_COMPANY_ID = "6cf693c6-ad8a-4b4e-803a-f38d1544969c"
-
-
 def test_h111_02_cross_company_approval_decision_blocked(
     base_url,
     auth_headers,
     test_company_data,
     test_database_url,
+    cross_company_context,
 ):
     db = psycopg.connect(test_database_url)
     db.autocommit = True
@@ -28,7 +26,7 @@ def test_h111_02_cross_company_approval_decision_blocked(
             ORDER BY created_at DESC
             LIMIT 1
             """,
-            (uuid.UUID(CROSS_COMPANY_ID),),
+            (uuid.UUID(cross_company_context["company_id"]),),
         ).fetchone()
 
         assert po_row is not None
@@ -43,25 +41,16 @@ def test_h111_02_cross_company_approval_decision_blocked(
               AND entity_id = %s
             """,
             (
-                uuid.UUID(CROSS_COMPANY_ID),
+                uuid.UUID(cross_company_context["company_id"]),
                 po_id,
             ),
         ).fetchone()[0]
 
         assert existing == 0
 
-        member_row = db.execute(
-            """
-            SELECT user_id
-            FROM company_members
-            WHERE company_id = %s
-            LIMIT 1
-            """,
-            (uuid.UUID(CROSS_COMPANY_ID),),
-        ).fetchone()
-
-        assert member_row is not None
-        requested_by = member_row[0]
+        requested_by = uuid.UUID(
+            cross_company_context["member_user_id"]
+        )
 
         db.execute(
             """
@@ -96,7 +85,7 @@ def test_h111_02_cross_company_approval_decision_blocked(
             """,
             (
                 approval_id,
-                uuid.UUID(CROSS_COMPANY_ID),
+                uuid.UUID(cross_company_context["company_id"]),
                 po_id,
                 requested_by,
             ),

@@ -4,9 +4,6 @@ import psycopg
 import requests
 
 
-CROSS_COMPANY_ID = "6cf693c6-ad8a-4b4e-803a-f38d1544969c"
-
-
 def _cleanup_payment(db, payment_id):
     db.execute(
         "DELETE FROM payments WHERE id = %s",
@@ -29,6 +26,7 @@ def test_h115_01_cross_company_payment_approval_creation_blocked(
     base_url,
     auth_headers,
     test_database_url,
+    cross_company_context,
 ):
     db = psycopg.connect(test_database_url)
     db.autocommit = True
@@ -44,7 +42,7 @@ def test_h115_01_cross_company_payment_approval_creation_blocked(
             ORDER BY created_at DESC
             LIMIT 1
             """,
-            (uuid.UUID(CROSS_COMPANY_ID),),
+            (uuid.UUID(cross_company_context["company_id"]),),
         ).fetchone()
 
         assert po_row is not None
@@ -64,7 +62,7 @@ def test_h115_01_cross_company_payment_approval_creation_blocked(
             """,
             (
                 payment_id,
-                uuid.UUID(CROSS_COMPANY_ID),
+                uuid.UUID(cross_company_context["company_id"]),
                 po_id,
                 1,
                 currency,
@@ -137,6 +135,7 @@ def test_h115_02_cross_company_payment_approval_decision_blocked(
     base_url,
     auth_headers,
     test_database_url,
+    cross_company_context,
 ):
     db = psycopg.connect(test_database_url)
     db.autocommit = True
@@ -153,7 +152,7 @@ def test_h115_02_cross_company_payment_approval_decision_blocked(
             ORDER BY created_at DESC
             LIMIT 1
             """,
-            (uuid.UUID(CROSS_COMPANY_ID),),
+            (uuid.UUID(cross_company_context["company_id"]),),
         ).fetchone()
 
         assert po_row is not None
@@ -173,7 +172,7 @@ def test_h115_02_cross_company_payment_approval_decision_blocked(
             """,
             (
                 payment_id,
-                uuid.UUID(CROSS_COMPANY_ID),
+                uuid.UUID(cross_company_context["company_id"]),
                 po_id,
                 1,
                 currency,
@@ -187,7 +186,7 @@ def test_h115_02_cross_company_payment_approval_decision_blocked(
             WHERE company_id = %s
             LIMIT 1
             """,
-            (uuid.UUID(CROSS_COMPANY_ID),),
+            (uuid.UUID(cross_company_context["company_id"]),),
         ).fetchone()
 
         assert member_row is not None
@@ -226,7 +225,7 @@ def test_h115_02_cross_company_payment_approval_decision_blocked(
             """,
             (
                 approval_id,
-                uuid.UUID(CROSS_COMPANY_ID),
+                uuid.UUID(cross_company_context["company_id"]),
                 payment_id,
                 requested_by,
             ),

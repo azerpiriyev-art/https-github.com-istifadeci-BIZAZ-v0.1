@@ -1,5 +1,4 @@
 import uuid
-import os
 import requests
 import pytest
 from app.database import SessionLocal
@@ -8,65 +7,20 @@ from sqlalchemy.orm import sessionmaker
 from app.models import AuditLog
 
 
-BASE_URL = os.getenv("BIZAZ_TEST_BASE_URL", "http://127.0.0.1:8001")
-
-OWNER_EMAIL = "bizaz-rbac-owner-test@gmail.com"
-OWNER_PASSWORD = "BIZAZ-Test-2026!"
-
-VIEWER_EMAIL = "bizaz-rbac-viewer-test@gmail.com"
-VIEWER_PASSWORD = "BIZAZ-Test-2026!"
-
-SUPPLIER_ID = "d1fa4bd4-13eb-48da-b2d5-f3c46a711d6f"
-PRODUCT_ID = "6f0b0b80-5dce-41ad-a131-d60f0e52d58b"
-
-OWNER_COMPANY_ID = "6cf693c6-ad8a-4b4e-803a-f38d1544969c"
-
-CROSS_COMPANY_PO_ID = "5f5ad4e8-ab76-42bf-81aa-1e2f7ebc6786"
-
-
-def login(email, password):
-    response = requests.post(
-        f"{BASE_URL}/api/v1/login",
-        json={
-            "email": email,
-            "password": password,
-        },
-        timeout=10,
-    )
-
-    assert response.status_code == 200, response.text
-
-    token = response.json()["token"]
-
-    return {
-        "Authorization": f"Bearer {token}",
-    }
-
-
-@pytest.fixture(scope="module")
-def owner_headers():
-    return login(OWNER_EMAIL, OWNER_PASSWORD)
-
-
-@pytest.fixture(scope="module")
-def viewer_headers():
-    return login(VIEWER_EMAIL, VIEWER_PASSWORD)
-
-
-def create_po(headers, prefix="PO-4-15"):
+def create_po(base_url, headers, acceptance_owner_data, prefix="PO-4-15"):
     order_number = f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
     payload = {
-        "supplier_id": SUPPLIER_ID,
+        "supplier_id": acceptance_owner_data["supplier_id"],
         "order_number": order_number,
         "order_date": "2026-09-04T00:00:00",
         "currency": "AZN",
         "notes": "4.15 AUTOMATED ACCEPTANCE TEST",
         "items": [
             {
-                "product_id": PRODUCT_ID,
+                "product_id": acceptance_owner_data["product_id"],
                 "quantity": 1,
-                "unit": "ədəd",
+                "unit": "?d?d",
                 "unit_price": 500,
                 "vat_rate": 18,
             }
@@ -74,7 +28,7 @@ def create_po(headers, prefix="PO-4-15"):
     }
 
     response = requests.post(
-        f"{BASE_URL}/api/v1/purchase-orders",
+        f"{base_url}/api/v1/purchase-orders",
         headers=headers,
         json=payload,
         timeout=10,
@@ -92,9 +46,9 @@ def create_po(headers, prefix="PO-4-15"):
     return data
 
 
-def change_status(headers, po_id, status):
+def change_status(base_url, headers, po_id, status):
     response = requests.post(
-        f"{BASE_URL}/api/v1/purchase-orders/{po_id}/status",
+        f"{base_url}/api/v1/purchase-orders/{po_id}/status",
         headers=headers,
         json={"status": status},
         timeout=10,
@@ -102,19 +56,18 @@ def change_status(headers, po_id, status):
 
     return response
 
-
-def test_01_create_po(owner_headers):
-    data = create_po(owner_headers)
+def test_01_create_po(base_url, acceptance_owner_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
 
     assert data["status"] == "DRAFT"
 
 
-def test_02_draft_update_allowed(owner_headers):
-    data = create_po(owner_headers)
+def test_02_draft_update_allowed(base_url, acceptance_owner_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
 
     response = requests.put(
-        f"{BASE_URL}/api/v1/purchase-orders/{data['id']}",
-        headers=owner_headers,
+        f"{base_url}/api/v1/purchase-orders/{data['id']}",
+        headers=acceptance_owner_headers,
         json={
             "notes": "4.15 DRAFT UPDATE ALLOWED",
         },
@@ -125,12 +78,12 @@ def test_02_draft_update_allowed(owner_headers):
     assert response.json()["status"] == "DRAFT"
 
 
-def test_03_status_bypass_blocked(owner_headers):
-    data = create_po(owner_headers)
+def test_03_status_bypass_blocked(base_url, acceptance_owner_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
 
     response = requests.put(
-        f"{BASE_URL}/api/v1/purchase-orders/{data['id']}",
-        headers=owner_headers,
+        f"{base_url}/api/v1/purchase-orders/{data['id']}",
+        headers=acceptance_owner_headers,
         json={
             "status": "APPROVED",
         },
@@ -141,31 +94,31 @@ def test_03_status_bypass_blocked(owner_headers):
     assert "yalnız /status endpointi vasitəsilə" in response.text
 
 
-def test_04_full_status_workflow(owner_headers):
-    data = create_po(owner_headers)
+def test_04_full_status_workflow(base_url, acceptance_owner_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
     po_id = data["id"]
 
-    response = change_status(owner_headers, po_id, "SUBMITTED")
+    response = change_status(base_url, acceptance_owner_headers, po_id, "SUBMITTED")
     assert response.status_code == 200, response.text
 
-    response = change_status(owner_headers, po_id, "APPROVED")
+    response = change_status(base_url, acceptance_owner_headers, po_id, "APPROVED")
     assert response.status_code == 200, response.text
 
-    response = change_status(owner_headers, po_id, "RECEIVED")
+    response = change_status(base_url, acceptance_owner_headers, po_id, "RECEIVED")
     assert response.status_code == 200, response.text
 
 
-def test_05_received_update_blocked(owner_headers):
-    data = create_po(owner_headers)
+def test_05_received_update_blocked(base_url, acceptance_owner_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
     po_id = data["id"]
 
-    assert change_status(owner_headers, po_id, "SUBMITTED").status_code == 200
-    assert change_status(owner_headers, po_id, "APPROVED").status_code == 200
-    assert change_status(owner_headers, po_id, "RECEIVED").status_code == 200
+    assert change_status(base_url, acceptance_owner_headers, po_id, "SUBMITTED").status_code == 200
+    assert change_status(base_url, acceptance_owner_headers, po_id, "APPROVED").status_code == 200
+    assert change_status(base_url, acceptance_owner_headers, po_id, "RECEIVED").status_code == 200
 
     response = requests.put(
-        f"{BASE_URL}/api/v1/purchase-orders/{po_id}",
-        headers=owner_headers,
+        f"{base_url}/api/v1/purchase-orders/{po_id}",
+        headers=acceptance_owner_headers,
         json={
             "notes": "MUST BE BLOCKED",
         },
@@ -176,17 +129,17 @@ def test_05_received_update_blocked(owner_headers):
     assert "RECEIVED" in response.text
 
 
-def test_06_received_delete_blocked(owner_headers):
-    data = create_po(owner_headers)
+def test_06_received_delete_blocked(base_url, acceptance_owner_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
     po_id = data["id"]
 
-    assert change_status(owner_headers, po_id, "SUBMITTED").status_code == 200
-    assert change_status(owner_headers, po_id, "APPROVED").status_code == 200
-    assert change_status(owner_headers, po_id, "RECEIVED").status_code == 200
+    assert change_status(base_url, acceptance_owner_headers, po_id, "SUBMITTED").status_code == 200
+    assert change_status(base_url, acceptance_owner_headers, po_id, "APPROVED").status_code == 200
+    assert change_status(base_url, acceptance_owner_headers, po_id, "RECEIVED").status_code == 200
 
     response = requests.delete(
-        f"{BASE_URL}/api/v1/purchase-orders/{po_id}",
-        headers=owner_headers,
+        f"{base_url}/api/v1/purchase-orders/{po_id}",
+        headers=acceptance_owner_headers,
         timeout=10,
     )
 
@@ -194,28 +147,28 @@ def test_06_received_delete_blocked(owner_headers):
     assert "RECEIVED" in response.text
 
 
-def test_07_draft_delete_allowed(owner_headers):
-    data = create_po(owner_headers)
+def test_07_draft_delete_allowed(base_url, acceptance_owner_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
 
     response = requests.delete(
-        f"{BASE_URL}/api/v1/purchase-orders/{data['id']}",
-        headers=owner_headers,
+        f"{base_url}/api/v1/purchase-orders/{data['id']}",
+        headers=acceptance_owner_headers,
         timeout=10,
     )
 
     assert response.status_code == 200, response.text
 
 
-def test_08_cancelled_update_blocked(owner_headers):
-    data = create_po(owner_headers)
+def test_08_cancelled_update_blocked(base_url, acceptance_owner_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
     po_id = data["id"]
 
-    response = change_status(owner_headers, po_id, "CANCELLED")
+    response = change_status(base_url, acceptance_owner_headers, po_id, "CANCELLED")
     assert response.status_code == 200, response.text
 
     response = requests.put(
-        f"{BASE_URL}/api/v1/purchase-orders/{po_id}",
-        headers=owner_headers,
+        f"{base_url}/api/v1/purchase-orders/{po_id}",
+        headers=acceptance_owner_headers,
         json={
             "notes": "MUST BE BLOCKED",
         },
@@ -226,16 +179,16 @@ def test_08_cancelled_update_blocked(owner_headers):
     assert "CANCELLED" in response.text
 
 
-def test_09_cancelled_delete_blocked(owner_headers):
-    data = create_po(owner_headers)
+def test_09_cancelled_delete_blocked(base_url, acceptance_owner_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
     po_id = data["id"]
 
-    response = change_status(owner_headers, po_id, "CANCELLED")
+    response = change_status(base_url, acceptance_owner_headers, po_id, "CANCELLED")
     assert response.status_code == 200, response.text
 
     response = requests.delete(
-        f"{BASE_URL}/api/v1/purchase-orders/{po_id}",
-        headers=owner_headers,
+        f"{base_url}/api/v1/purchase-orders/{po_id}",
+        headers=acceptance_owner_headers,
         timeout=10,
     )
 
@@ -243,15 +196,15 @@ def test_09_cancelled_delete_blocked(owner_headers):
     assert "CANCELLED" in response.text
 
 
-def test_10_viewer_create_blocked(viewer_headers):
+def test_10_viewer_create_blocked(base_url, acceptance_viewer_headers, acceptance_owner_data):
     payload = {
-        "supplier_id": SUPPLIER_ID,
+        "supplier_id": acceptance_owner_data["supplier_id"],
         "order_number": f"PO-4-15-VIEWER-{uuid.uuid4().hex[:8].upper()}",
         "order_date": "2026-09-04T00:00:00",
         "currency": "AZN",
         "items": [
             {
-                "product_id": PRODUCT_ID,
+                "product_id": acceptance_owner_data["product_id"],
                 "quantity": 1,
                 "unit": "ədəd",
                 "unit_price": 500,
@@ -261,8 +214,8 @@ def test_10_viewer_create_blocked(viewer_headers):
     }
 
     response = requests.post(
-        f"{BASE_URL}/api/v1/purchase-orders",
-        headers=viewer_headers,
+        f"{base_url}/api/v1/purchase-orders",
+        headers=acceptance_viewer_headers,
         json=payload,
         timeout=10,
     )
@@ -270,12 +223,12 @@ def test_10_viewer_create_blocked(viewer_headers):
     assert response.status_code == 403
 
 
-def test_11_viewer_update_blocked(owner_headers, viewer_headers):
-    data = create_po(owner_headers)
+def test_11_viewer_update_blocked(base_url, acceptance_owner_headers, acceptance_viewer_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
 
     response = requests.put(
-        f"{BASE_URL}/api/v1/purchase-orders/{data['id']}",
-        headers=viewer_headers,
+        f"{base_url}/api/v1/purchase-orders/{data['id']}",
+        headers=acceptance_viewer_headers,
         json={
             "notes": "VIEWER MUST NOT UPDATE",
         },
@@ -285,23 +238,24 @@ def test_11_viewer_update_blocked(owner_headers, viewer_headers):
     assert response.status_code == 403
 
 
-def test_12_viewer_delete_blocked(owner_headers, viewer_headers):
-    data = create_po(owner_headers)
+def test_12_viewer_delete_blocked(base_url, acceptance_owner_headers, acceptance_viewer_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
 
     response = requests.delete(
-        f"{BASE_URL}/api/v1/purchase-orders/{data['id']}",
-        headers=viewer_headers,
+        f"{base_url}/api/v1/purchase-orders/{data['id']}",
+        headers=acceptance_viewer_headers,
         timeout=10,
     )
 
     assert response.status_code == 403
 
 
-def test_13_viewer_status_blocked(owner_headers, viewer_headers):
-    data = create_po(owner_headers)
+def test_13_viewer_status_blocked(base_url, acceptance_owner_headers, acceptance_viewer_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
 
     response = change_status(
-        viewer_headers,
+        base_url,
+        acceptance_viewer_headers,
         data["id"],
         "SUBMITTED",
     )
@@ -309,21 +263,22 @@ def test_13_viewer_status_blocked(owner_headers, viewer_headers):
     assert response.status_code == 403
 
 
-def test_14_cross_company_isolation(owner_headers):
+def test_14_cross_company_isolation(base_url, acceptance_owner_headers, acceptance_cross_company_po_id):
     response = requests.get(
-        f"{BASE_URL}/api/v1/purchase-orders/{CROSS_COMPANY_PO_ID}",
-        headers=owner_headers,
+        f"{base_url}/api/v1/purchase-orders/{acceptance_cross_company_po_id}",
+        headers=acceptance_owner_headers,
         timeout=10,
     )
 
     assert response.status_code == 404
 
 
-def test_15_invalid_status_transition_blocked(owner_headers):
-    data = create_po(owner_headers)
+def test_15_invalid_status_transition_blocked(base_url, acceptance_owner_headers, acceptance_owner_data):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
 
     response = change_status(
-        owner_headers,
+        base_url,
+        acceptance_owner_headers,
         data["id"],
         "RECEIVED",
     )
@@ -332,8 +287,8 @@ def test_15_invalid_status_transition_blocked(owner_headers):
     assert "Yanlış status keçidi" in response.text
 
 
-def test_16_audit_create_and_status(owner_headers, test_database_url):
-    data = create_po(owner_headers)
+def test_16_audit_create_and_status(base_url, acceptance_owner_headers, acceptance_owner_data, test_database_url):
+    data = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
     po_id = data["id"]
 
     test_engine = create_engine(test_database_url.replace("postgresql://", "postgresql+psycopg://"))
@@ -344,18 +299,19 @@ def test_16_audit_create_and_status(owner_headers, test_database_url):
         created_audit = db.query(AuditLog).filter(
             AuditLog.entity_type == "purchase_order",
             AuditLog.entity_id == uuid.UUID(po_id),
-            AuditLog.company_id == uuid.UUID(OWNER_COMPANY_ID),
+            AuditLog.company_id == uuid.UUID(acceptance_owner_data["company_id"]),
             AuditLog.action == "PURCHASE_ORDER_CREATED",
         ).first()
 
         assert created_audit is not None
         assert created_audit.entity_id == uuid.UUID(po_id)
-        assert created_audit.company_id == uuid.UUID(OWNER_COMPANY_ID)
+        assert created_audit.company_id == uuid.UUID(acceptance_owner_data["company_id"])
     finally:
         db.close()
 
     response = change_status(
-        owner_headers,
+        base_url,
+        acceptance_owner_headers,
         po_id,
         "SUBMITTED",
     )
@@ -367,21 +323,58 @@ def test_16_audit_create_and_status(owner_headers, test_database_url):
         status_audit = db.query(AuditLog).filter(
             AuditLog.entity_type == "purchase_order",
             AuditLog.entity_id == uuid.UUID(po_id),
-            AuditLog.company_id == uuid.UUID(OWNER_COMPANY_ID),
+            AuditLog.company_id == uuid.UUID(acceptance_owner_data["company_id"]),
             AuditLog.action == "PURCHASE_ORDER_STATUS_CHANGED",
         ).first()
 
         assert status_audit is not None
         assert status_audit.entity_id == uuid.UUID(po_id)
-        assert status_audit.company_id == uuid.UUID(OWNER_COMPANY_ID)
+        assert status_audit.company_id == uuid.UUID(acceptance_owner_data["company_id"])
     finally:
         db.close()
 
     response = requests.get(
-        f"{BASE_URL}/api/v1/purchase-orders/{po_id}",
-        headers=owner_headers,
+        f"{base_url}/api/v1/purchase-orders/{po_id}",
+        headers=acceptance_owner_headers,
         timeout=10,
     )
 
     assert response.status_code == 200
     assert response.json()["status"] == "SUBMITTED"
+
+def test_17_update_total_below_active_payment_blocked(base_url, acceptance_owner_headers, acceptance_owner_data):
+    po = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
+
+    payment_response = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=acceptance_owner_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 100,
+            "currency": "AZN",
+            "reference": f"PO-UPDATE-LIMIT-TEST-{uuid.uuid4()}",
+        },
+        timeout=10,
+    )
+
+    assert payment_response.status_code == 201, payment_response.text
+
+    response = requests.put(
+        f"{base_url}/api/v1/purchase-orders/{po['id']}",
+        headers=acceptance_owner_headers,
+        json={
+            "items": [
+                {
+                    "product_id": acceptance_owner_data["product_id"],
+                    "quantity": 1,
+                    "unit": "ədəd",
+                    "unit_price": 50,
+                    "vat_rate": 18,
+                }
+            ]
+        },
+        timeout=10,
+    )
+
+    assert response.status_code == 400, response.text
+    assert "payment" in response.text.lower() or "?d?ni?" in response.text.lower()

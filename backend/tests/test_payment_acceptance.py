@@ -1,10 +1,8 @@
-import uuid
+﻿import uuid
 import pytest
 
 import psycopg
 import requests
-
-CROSS_COMPANY_ID = "6cf693c6-ad8a-4b4e-803a-f38d1544969c"
 
 
 def _create_approved_po(base_url, auth_headers, test_company_data):
@@ -229,8 +227,7 @@ def test_235_payment_audit_created(
 def test_236_cross_company_payment_creation_blocked(
     base_url,
     auth_headers,
-    test_database_url,
-):
+    test_database_url, cross_company_context):
     db = psycopg.connect(test_database_url)
     db.autocommit = True
 
@@ -243,7 +240,7 @@ def test_236_cross_company_payment_creation_blocked(
             ORDER BY created_at DESC
             LIMIT 1
             """,
-            (uuid.UUID(CROSS_COMPANY_ID),),
+            (uuid.UUID(cross_company_context["company_id"]),),
         ).fetchone()
 
         assert row is not None
@@ -433,15 +430,15 @@ def test_247_payment_invalid_status_rejected(base_url, auth_headers, test_compan
 
 
 
-def test_248_payment_cross_company_status_blocked(base_url, auth_headers, test_database_url):
+def test_248_payment_cross_company_status_blocked(base_url, auth_headers, test_database_url, cross_company_context):
     db = psycopg.connect(test_database_url); db.autocommit = True
     payment_id = None
     try:
-        row = db.execute("SELECT id, currency FROM purchase_orders WHERE company_id = %s ORDER BY created_at DESC LIMIT 1", (uuid.UUID(CROSS_COMPANY_ID),)).fetchone()
+        row = db.execute("SELECT id, currency FROM purchase_orders WHERE company_id = %s ORDER BY created_at DESC LIMIT 1", (uuid.UUID(cross_company_context["company_id"]),)).fetchone()
         assert row is not None
         payment_id = db.execute(
             "INSERT INTO payments (company_id, purchase_order_id, amount, currency, status) VALUES (%s, %s, %s, %s, 'PENDING') RETURNING id",
-            (uuid.UUID(CROSS_COMPANY_ID), row[0], 1, row[1])
+            (uuid.UUID(cross_company_context["company_id"]), row[0], 1, row[1])
         ).fetchone()[0]
         response = _status(base_url, auth_headers, payment_id, "PAID")
         assert response.status_code == 404, response.text
@@ -796,3 +793,80 @@ def test_payment_limit_keeps_paid_payment(
     )
 
     assert second.status_code == 400, second.text
+
+
+def test_252_payment_negative_amount_rejected(
+    base_url, auth_headers, test_company_data
+):
+    po = _create_approved_po(base_url, auth_headers, test_company_data)
+
+    response = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": -1,
+            "currency": "AZN",
+        },
+        timeout=10,
+    )
+
+    assert response.status_code == 422
+
+
+def test_253_payment_currency_too_short_rejected(
+    base_url, auth_headers, test_company_data
+):
+    po = _create_approved_po(base_url, auth_headers, test_company_data)
+
+    response = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 100,
+            "currency": "AZ",
+        },
+        timeout=10,
+    )
+
+    assert response.status_code == 422
+
+
+def test_254_payment_currency_too_long_rejected(
+    base_url, auth_headers, test_company_data
+):
+    po = _create_approved_po(base_url, auth_headers, test_company_data)
+
+    response = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 100,
+            "currency": "AZNN",
+        },
+        timeout=10,
+    )
+
+    assert response.status_code == 422
+
+
+def test_255_payment_amount_more_than_4_decimals_rejected(
+    base_url, auth_headers, test_company_data, test_database_url
+):
+    po = _create_approved_po(base_url, auth_headers, test_company_data)
+
+    response = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=auth_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": "0.00001",
+            "currency": "AZN",
+            "reference": f"DECIMAL-TEST-{uuid.uuid4().hex[:10]}",
+        },
+        timeout=10,
+    )
+
+    assert response.status_code == 422, response.text

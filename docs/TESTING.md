@@ -16,7 +16,7 @@ A module moves to 🟢 Hazır only when its applicable gates pass.
 The GitHub Actions workflow runs on every push and pull request:
 
 1. Python dependency installation, backend source compilation, and isolated health/metadata tests.
-2. A clean PostgreSQL 16 service with `001_foundation.sql` applied and its four foundation tables verified.
+2. A clean PostgreSQL 16 service with the complete migration sequence applied (`001_foundation.sql` through `007_supplier_offer_item_uniqueness.sql`), followed by verification of the required schema and key constraints.
 3. Deterministic frontend dependency installation (`npm ci`) and production build (`npm run build`).
 4. Repository hygiene checks that reject tracked runtime `.env` files, generated backup/log artifacts, and private-key material.
 

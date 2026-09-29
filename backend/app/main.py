@@ -2260,10 +2260,16 @@ class PurchaseRequestResponseSchema(BaseModel):
 class SupplierOfferItemCreateSchema(BaseModel):
     purchase_request_item_id: uuid.UUID
     product_id: uuid.UUID
-    quantity: Decimal = Field(gt=0)
+    quantity: Decimal = Field(gt=0, max_digits=18, decimal_places=4)
     unit: str = Field(min_length=1, max_length=30)
-    unit_price: Decimal = Field(ge=0)
-    vat_rate: Decimal = Field(default=Decimal("18.00"), ge=0, le=100)
+    unit_price: Decimal = Field(ge=0, max_digits=18, decimal_places=4)
+    vat_rate: Decimal = Field(
+        default=Decimal("18.00"),
+        ge=0,
+        le=100,
+        max_digits=5,
+        decimal_places=2,
+    )
     delivery_days: int | None = Field(default=None, ge=0)
     notes: str | None = Field(default=None, max_length=5000)
 
@@ -2573,7 +2579,16 @@ def create_supplier_offer(
         for item in request_items
     }
 
+    seen_request_item_ids = set()
+
     for item in payload.items:
+        if item.purchase_request_item_id in seen_request_item_ids:
+            raise HTTPException(
+                status_code=422,
+                detail="Supplier offer daxilinde eyni purchase request item bir defe-den cox gosterile bilmez.",
+            )
+
+        seen_request_item_ids.add(item.purchase_request_item_id)
         request_item = request_items_by_id.get(
             item.purchase_request_item_id
         )
@@ -2730,7 +2745,7 @@ def create_offer_selection(
         select(PurchaseRequest).where(
             PurchaseRequest.id == payload.purchase_request_id,
             PurchaseRequest.company_id == membership.company_id,
-        )
+        ).with_for_update()
     )
 
     if purchase_request is None:
@@ -2817,7 +2832,17 @@ def create_offer_selection(
     )
 
     db.add(selection)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+        constraint_name = getattr(getattr(exc.orig, "diag", None), "constraint_name", None)
+        if constraint_name == "uq_offer_selections_active_request":
+            raise HTTPException(
+                status_code=409,
+                detail="Purchase Request ucun artiq aktiv Offer Selection movcuddur.",
+            )
+        raise
 
     db.add(
         AuditLog(
@@ -3065,39 +3090,45 @@ def get_purchase_request_comparison(
 
 class PurchaseOrderItemCreateSchema(BaseModel):
     product_id: uuid.UUID
-    quantity: Decimal = Field(gt=0)
+    quantity: Decimal = Field(gt=0, max_digits=18, decimal_places=4)
     unit: str = Field(
         default="╨ЩтДвd╨ЩтДвd",
         min_length=1,
         max_length=30,
     )
-    unit_price: Decimal = Field(ge=0)
+    unit_price: Decimal = Field(ge=0, max_digits=18, decimal_places=4)
     vat_rate: Decimal = Field(
         default=Decimal("18.00"),
         ge=0,
         le=100,
+        max_digits=5,
+        decimal_places=2,
     )
 
 
 class PurchaseOrderItemUpdateSchema(BaseModel):
-    product_id: uuid.UUID | None = None
-    quantity: Decimal | None = Field(
-        default=None,
+    product_id: uuid.UUID
+    quantity: Decimal = Field(
         gt=0,
+        max_digits=18,
+        decimal_places=4,
     )
-    unit: str | None = Field(
-        default=None,
+    unit: str = Field(
+        default='ədəd',
         min_length=1,
         max_length=30,
     )
-    unit_price: Decimal | None = Field(
-        default=None,
+    unit_price: Decimal = Field(
         ge=0,
+        max_digits=18,
+        decimal_places=4,
     )
-    vat_rate: Decimal | None = Field(
-        default=None,
+    vat_rate: Decimal = Field(
+        default=Decimal('18.00'),
         ge=0,
         le=100,
+        max_digits=5,
+        decimal_places=2,
     )
 
 
@@ -3124,7 +3155,7 @@ class PurchaseOrderStatusUpdateSchema(BaseModel):
 
 class PaymentCreateSchema(BaseModel):
     purchase_order_id: str
-    amount: Decimal = Field(gt=0)
+    amount: Decimal = Field(gt=0, max_digits=18, decimal_places=4)
     currency: str = Field(min_length=3, max_length=3)
     reference: str | None = Field(default=None, max_length=100)
 
@@ -3175,7 +3206,10 @@ class PurchaseOrderUpdateSchema(BaseModel):
         max_length=3,
     )
     notes: str | None = None
-    items: list[PurchaseOrderItemUpdateSchema] | None = None
+    items: list[PurchaseOrderItemUpdateSchema] | None = Field(
+        default=None,
+        min_length=1,
+    )
 
 
 class PurchaseOrderListResponseSchema(BaseModel):
@@ -4580,7 +4614,7 @@ def update_purchase_order_status(
         select(PurchaseOrder).where(
             PurchaseOrder.id == purchase_order_id,
             PurchaseOrder.company_id == membership.company_id,
-        )
+        ).with_for_update()
     )
 
     if not purchase_order:
@@ -4912,13 +4946,13 @@ def create_purchase_order_from_selection(
             line_total = (
                 offer_item.quantity
                 * offer_item.unit_price
-            )
+            ).quantize(Decimal("0.0001"))
 
             line_vat = (
                 line_total
                 * offer_item.vat_rate
                 / Decimal("100")
-            )
+            ).quantize(Decimal("0.0001"))
 
             subtotal += line_total
             vat_total += line_vat
@@ -5481,6 +5515,17 @@ def delete_purchase_order(
 
     deleted_order_id = purchase_order.id
     deleted_order_number = purchase_order.order_number
+    payment_exists_for_delete = db.scalar(
+        select(Payment.id).where(
+            Payment.purchase_order_id == purchase_order.id,
+            Payment.company_id == membership.company_id,
+        ).limit(1)
+    )
+    if payment_exists_for_delete is not None:
+        raise HTTPException(
+            status_code=409,
+            detail='Payment bağlı olan Purchase Order silinə bilməz.',
+        )
     company_id = purchase_order.company_id
 
     db.delete(purchase_order)
@@ -5522,7 +5567,7 @@ def update_purchase_order(
         select(PurchaseOrder).where(
             PurchaseOrder.id == purchase_order_id,
             PurchaseOrder.company_id == membership.company_id,
-        )
+        ).with_for_update()
     )
 
     if not purchase_order:
@@ -5551,6 +5596,19 @@ def update_purchase_order(
                 detail="Təchizatçı tapılmadı və ya bu şirkətə aid deyil",
             )
 
+        if payload.supplier_id != purchase_order.supplier_id:
+            active_payment_exists = db.scalar(
+                select(func.count(Payment.id)).where(
+                    Payment.purchase_order_id == purchase_order.id,
+                    Payment.company_id == membership.company_id,
+                    Payment.status.in_(("PENDING", "PAID")),
+                )
+            )
+            if active_payment_exists:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Purchase Order supplier cannot be changed while active payments exist",
+                )
         purchase_order.supplier_id = payload.supplier_id
 
     if payload.order_number is not None:
@@ -5580,7 +5638,22 @@ def update_purchase_order(
         )
 
     if payload.currency is not None:
-        purchase_order.currency = payload.currency.upper()
+        new_currency = payload.currency.strip().upper()
+        current_currency = (purchase_order.currency or "").strip().upper()
+        if new_currency != current_currency:
+            active_payment_exists = db.scalar(
+                select(func.count(Payment.id)).where(
+                    Payment.purchase_order_id == purchase_order.id,
+                    Payment.company_id == membership.company_id,
+                    Payment.status.in_(("PENDING", "PAID")),
+                )
+            )
+            if active_payment_exists:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Purchase Order currency cannot be changed while active payments exist",
+                )
+        purchase_order.currency = new_currency
 
     if payload.notes is not None:
         purchase_order.notes = payload.notes
@@ -5649,6 +5722,19 @@ def update_purchase_order(
             purchase_order.subtotal + purchase_order.vat_amount
         ).quantize(Decimal("0.0001"))
 
+    active_payment_total = db.scalar(
+        select(func.coalesce(func.sum(Payment.amount), 0)).where(
+            Payment.purchase_order_id == purchase_order.id,
+            Payment.company_id == membership.company_id,
+            Payment.status.in_(("PENDING", "PAID")),
+        )
+    )
+    active_payment_total = Decimal(str(active_payment_total or 0))
+    if active_payment_total > (purchase_order.total_amount or Decimal("0")):
+        raise HTTPException(
+            status_code=400,
+            detail="Purchase Order total cannot be less than active payment total",
+        )
     purchase_order.updated_at = datetime.now(timezone.utc)
 
     db.add(

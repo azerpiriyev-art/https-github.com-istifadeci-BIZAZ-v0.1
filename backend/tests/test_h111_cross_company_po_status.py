@@ -4,13 +4,11 @@ import psycopg
 import requests
 
 
-CROSS_COMPANY_ID = "6cf693c6-ad8a-4b4e-803a-f38d1544969c"
-
-
 def test_h111_03_cross_company_po_status_bypass_blocked(
     base_url,
     auth_headers,
     test_database_url,
+    cross_company_context,
 ):
     db = psycopg.connect(test_database_url)
     db.autocommit = True
@@ -22,12 +20,9 @@ def test_h111_03_cross_company_po_status_bypass_blocked(
             """
             SELECT id, status
             FROM purchase_orders
-            WHERE company_id = %s
-              AND status = 'SUBMITTED'
-            ORDER BY created_at DESC
-            LIMIT 1
+            WHERE id = %s
             """,
-            (uuid.UUID(CROSS_COMPANY_ID),),
+            (uuid.UUID(cross_company_context["submitted_po_id"]),),
         ).fetchone()
 
         assert row is not None

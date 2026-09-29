@@ -61,6 +61,7 @@ def test_03_status_change_audit(
     base_url,
     auth_headers,
     purchase_request_lifecycle_fixture,
+    test_database_url,
 ):
     request_id = purchase_request_lifecycle_fixture["request_id"]
 
@@ -74,17 +75,9 @@ def test_03_status_change_audit(
 
     assert response.status_code == 200, response.text
 
-    import os
     import psycopg
 
-    database_url = os.getenv("BIZAZ_TEST_DATABASE_URL", "")
-    if not database_url:
-        database_url = "postgresql://bizaz:change-me-local-only@localhost:5432/bizaz_procurement_test"
-
-    database_url = database_url.replace(
-        "postgresql+psycopg://",
-        "postgresql://",
-    )
+    database_url = test_database_url
 
     db = psycopg.connect(database_url)
     try:
@@ -246,6 +239,7 @@ def test_07_expired_supplier_offer_rejected_from_purchase_order(
     auth_headers,
     expired_supplier_offer_fixture,
     test_database_url,
+    test_credentials,
 ):
     fixture = expired_supplier_offer_fixture
 
@@ -262,7 +256,7 @@ def test_07_expired_supplier_offer_rejected_from_purchase_order(
             WHERE email = %s
             LIMIT 1
             """,
-            ("procurement-test@example.com",),
+            (test_credentials["email"],),
         ).fetchone()
 
         assert user_row is not None

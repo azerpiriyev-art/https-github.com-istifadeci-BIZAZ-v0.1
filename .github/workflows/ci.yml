@@ -14,25 +14,80 @@ concurrency:
 
 jobs:
   backend-quality:
-    name: Backend syntax and isolated tests
+    name: Backend syntax and full regression
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          python-version: '3.14.7'
           cache: pip
           cache-dependency-path: backend/requirements.txt
+
       - name: Install backend dependencies
-        run: python -m pip install --upgrade pip && python -m pip install -r backend/requirements.txt
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r backend/requirements.txt
+
+      - name: Start isolated PostgreSQL
+        run: |
+          docker run --detach             --name bizaz-ci-postgres             --publish 5432:5432             -e POSTGRES_DB=bizaz_procurement_test             -e POSTGRES_USER=bizaz_ci             -e POSTGRES_PASSWORD=bizaz_ci_password             postgres:16-alpine
+
+          for attempt in {1..30}; do
+            if docker exec bizaz-ci-postgres pg_isready -U bizaz_ci -d bizaz_procurement_test; then
+              exit 0
+            fi
+            sleep 2
+          done
+
+          docker logs bizaz-ci-postgres
+          exit 1
+
+      - name: Apply all database migrations
+        shell: bash
+        run: |
+          for migration in db/migrations/*.sql; do
+            echo "=== APPLY $migration ==="
+            docker exec -i               -e PGPASSWORD=bizaz_ci_password               bizaz-ci-postgres               psql -U bizaz_ci -d bizaz_procurement_test               -v ON_ERROR_STOP=1 -f - < "$migration"
+          done
+
       - name: Compile backend source
         run: python -m compileall -q backend/app
-      - name: Run isolated health and metadata tests
+
+      - name: Start backend API
+        shell: bash
+        working-directory: backend
         env:
-          PYTHONPATH: backend
-          DATABASE_URL: postgresql+psycopg://bizaz_ci:bizaz_ci_password@127.0.0.1:5432/bizaz_ci
+          PYTHONPATH: .
+          DATABASE_URL: postgresql+psycopg://bizaz_ci:bizaz_ci_password@127.0.0.1:5432/bizaz_procurement_test
           JWT_SECRET: ci-test-secret-not-for-production
-        run: python -m pytest -q backend/tests/test_health.py
+        run: |
+          nohup python -m uvicorn app.main:app             --host 127.0.0.1             --port 8001             > /tmp/bizaz-uvicorn.log 2>&1 &
+
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8001/health > /tmp/health.json; then
+              cat /tmp/health.json
+              exit 0
+            fi
+            sleep 2
+          done
+
+          cat /tmp/bizaz-uvicorn.log
+          exit 1
+
+      - name: Run dependency integrity check
+        run: python -m pip check
+
+      - name: Run full backend regression
+        working-directory: backend
+        env:
+          PYTHONPATH: .
+          DATABASE_URL: postgresql+psycopg://bizaz_ci:bizaz_ci_password@127.0.0.1:5432/bizaz_procurement_test
+          BIZAZ_TEST_DATABASE_URL: postgresql://bizaz_ci:bizaz_ci_password@127.0.0.1:5432/bizaz_procurement_test
+          BIZAZ_TEST_BASE_URL: http://127.0.0.1:8001
+          JWT_SECRET: ci-test-secret-not-for-production
+        run: python -m pytest -q tests
 
   migration-smoke:
     name: PostgreSQL migration smoke check
@@ -51,12 +106,21 @@ jobs:
           done
           docker logs bizaz-ci-postgres
           exit 1
-      - name: Apply foundation migration
-        run: docker exec -i -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -v ON_ERROR_STOP=1 < db/migrations/001_foundation.sql
-      - name: Verify required foundation tables
+      - name: Apply all database migrations
+        shell: bash
         run: |
-          table_count=$(docker exec -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users', 'companies', 'company_members', 'audit_log');")
-          test "$table_count" = "4"
+          for migration in db/migrations/*.sql; do
+            echo "=== APPLY $migration ==="
+            docker exec -i -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -v ON_ERROR_STOP=1 -f - < "$migration"
+          done
+      - name: Verify required schema
+        shell: bash
+        run: |
+          table_count=$(docker exec -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users','companies','company_members','audit_log','products','product_prices','suppliers','purchase_orders','purchase_order_items','purchase_requests','purchase_request_items','supplier_offers','supplier_offer_items','offer_selections','needs','need_items','need_pr_conversions','approval_requests','approval_steps','payments');")
+          test "$table_count" = "20"
+
+          constraint_count=$(docker exec -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -Atqc "SELECT count(*) FROM pg_constraint WHERE conname IN ('uq_products_company_sku','uq_suppliers_company_tax_id','chk_product_prices_type','product_prices_amount_check','uq_supplier_offer_items_offer_request_item');")
+          test "$constraint_count" = "5"
 
   frontend-build:
     name: Frontend production build

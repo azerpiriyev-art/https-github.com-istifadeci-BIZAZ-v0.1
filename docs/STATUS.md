@@ -12,14 +12,14 @@
 | Project Foundation | рџџў Ready | Version-controlled production baseline exists. | Maintain change control. |
 | Business Model | рџџЎ Defined | Foundation documentation exists; commercial/legal decisions remain owner-gated. | Resolve commercial terms before commercialization. |
 | MVP Scope | рџџў Defined | Current in-scope and excluded capabilities are documented. | Deliver the next vertical slice. |
-| Technical Architecture / Database | рџџў Ready | FastAPI, PostgreSQL migration, and domain models are present. | Migration validation in CI. |
+| Technical Architecture / Database | 🟢 Ready | FastAPI, PostgreSQL models, and the complete migration sequence are present; a fresh PostgreSQL 16 migration smoke test verified 20 required tables and 5 key constraints. | Execute the updated migration gate in GitHub Actions. |
 | Authentication / RBAC | рџџў Implemented | Registration, login, current-user, company membership, and role checks are implemented. | Add CI and integration coverage. |
 | Company Management | рџџў Implemented | Company creation, lookup, and authorized update endpoints are implemented. | Extend only as required by the request/offer flow. |
 | Product & Supplier Catalog | рџџў Implemented | Product, price, and supplier CRUD endpoints are implemented with authorization and audit logging. | Validate in CI. |
 | Purchase Orders | рџџў Implemented | PO CRUD, controlled status transitions, company isolation, and audit acceptance tests exist. | Link to the request/offer flow. |
 | Purchase Requests / Supplier Offers / Comparison | 🟢 Implemented | Buyer purchase-request lifecycle, supplier offers, offer comparison, explicit supplier selection, purchase-order creation, authorization/company isolation, audit coverage, and expired-offer validation are implemented and covered by the procurement test suite. | 4.23.4 — frontend integration. |
 | Payments / Delivery / Reviews / Notifications / KPI | 🔴 Not implemented | MVP scope only; no completed delivery evidence in this baseline. | After the core procurement vertical slice. |
-| Automated Testing / CI | PASS | GitHub Actions verified backend syntax/isolated tests, PostgreSQL foundation migration, frontend production build, and repository hygiene for commit `e2e10f8`. The PO acceptance suite still requires a seeded integration environment. | Make PO fixtures self-contained. |
+| Automated Testing / CI | PASS | Local backend regression: 158 passed; fresh PostgreSQL migration chain applied successfully; CI workflow updated to apply and verify the complete schema. | Execute and verify GitHub Actions on the next push or pull request. |
 | Production Operations & Governance (4.18–4.22.9) | рџџў PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
 
 

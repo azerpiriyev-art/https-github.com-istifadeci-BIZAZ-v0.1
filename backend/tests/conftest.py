@@ -123,6 +123,249 @@ def test_company_data(test_db):
     }
 
 
+@pytest.fixture(scope="session")
+def acceptance_owner_credentials():
+    return {
+        "email": os.getenv(
+            "BIZAZ_ACCEPTANCE_OWNER_EMAIL",
+            "bizaz-rbac-owner-test@gmail.com",
+        ),
+        "password": os.getenv(
+            "BIZAZ_ACCEPTANCE_OWNER_PASSWORD",
+            "BIZAZ-Test-2026!",
+        ),
+    }
+
+
+@pytest.fixture(scope="session")
+def acceptance_viewer_credentials():
+    return {
+        "email": os.getenv(
+            "BIZAZ_ACCEPTANCE_VIEWER_EMAIL",
+            "bizaz-rbac-viewer-test@gmail.com",
+        ),
+        "password": os.getenv(
+            "BIZAZ_ACCEPTANCE_VIEWER_PASSWORD",
+            "BIZAZ-Test-2026!",
+        ),
+    }
+
+
+@pytest.fixture(scope="session")
+def acceptance_owner_headers(base_url, acceptance_owner_credentials):
+    response = requests.post(
+        f"{base_url}/api/v1/login",
+        json=acceptance_owner_credentials,
+        timeout=10,
+    )
+
+    assert response.status_code == 200, response.text
+
+    return {
+        "Authorization": f"Bearer {response.json()['token']}",
+    }
+
+
+@pytest.fixture(scope="session")
+def acceptance_viewer_headers(base_url, acceptance_viewer_credentials):
+    response = requests.post(
+        f"{base_url}/api/v1/login",
+        json=acceptance_viewer_credentials,
+        timeout=10,
+    )
+
+    assert response.status_code == 200, response.text
+
+    return {
+        "Authorization": f"Bearer {response.json()['token']}",
+    }
+
+
+@pytest.fixture(scope="session")
+def acceptance_owner_data(test_db, acceptance_owner_credentials):
+    row = test_db.execute(
+        """
+        SELECT
+            c.id AS company_id,
+            u.id AS user_id,
+            p.id AS product_id,
+            s.id AS supplier_id
+        FROM companies c
+        JOIN company_members cm
+            ON cm.company_id = c.id
+        JOIN users u
+            ON u.id = cm.user_id
+        CROSS JOIN LATERAL (
+            SELECT id
+            FROM products
+            WHERE company_id = c.id
+              AND is_active = TRUE
+            ORDER BY created_at
+            LIMIT 1
+        ) p
+        CROSS JOIN LATERAL (
+            SELECT id
+            FROM suppliers
+            WHERE company_id = c.id
+              AND is_active = TRUE
+            ORDER BY created_at
+            LIMIT 1
+        ) s
+        WHERE u.email = %s
+        LIMIT 1
+        """,
+        (acceptance_owner_credentials["email"],),
+    ).fetchone()
+
+    assert row, "Acceptance owner company/product/supplier fixture not found"
+
+    return {
+        "company_id": str(row[0]),
+        "user_id": str(row[1]),
+        "product_id": str(row[2]),
+        "supplier_id": str(row[3]),
+    }
+
+
+@pytest.fixture(scope="session")
+def acceptance_cross_company_po_id(test_db, acceptance_owner_data):
+    row = test_db.execute(
+        """
+        SELECT id
+        FROM purchase_orders
+        WHERE company_id <> %s
+        ORDER BY created_at DESC
+        LIMIT 1
+        """,
+        (acceptance_owner_data["company_id"],),
+    ).fetchone()
+
+    assert row, "Cross-company purchase order fixture not found"
+
+    return str(row[0])
+
+
+@pytest.fixture
+def alternate_supplier_data(base_url, auth_headers, test_company_data):
+    payload = {
+        "name": f"TEST-ALT-SUPPLIER-{uuid.uuid4().hex[:10].upper()}",
+        "is_active": True,
+    }
+
+    response = requests.post(
+        f"{base_url}/api/v1/suppliers",
+        headers=auth_headers,
+        json=payload,
+        timeout=10,
+    )
+
+    assert response.status_code == 201, response.text
+
+    supplier = response.json()
+
+    assert supplier["company_id"] == test_company_data["company_id"]
+    assert supplier["is_active"] is True
+
+    yield {
+        "supplier_id": supplier["id"],
+    }
+
+    delete_response = requests.delete(
+        f"{base_url}/api/v1/suppliers/{supplier['id']}",
+        headers=auth_headers,
+        timeout=10,
+    )
+
+    assert delete_response.status_code in (200, 204), delete_response.text
+
+
+@pytest.fixture(scope="session")
+def cross_company_context(test_db, test_company_data):
+    row = test_db.execute(
+        """
+        SELECT
+            c.id AS company_id,
+            u.id AS member_user_id,
+            po.id AS po_id,
+            submitted_po.id AS submitted_po_id
+        FROM companies c
+        JOIN company_members cm
+            ON cm.company_id = c.id
+        JOIN users u
+            ON u.id = cm.user_id
+        CROSS JOIN LATERAL (
+            SELECT id
+            FROM purchase_orders
+            WHERE company_id = c.id
+            ORDER BY created_at DESC
+            LIMIT 1
+        ) po
+        CROSS JOIN LATERAL (
+            SELECT id
+            FROM purchase_orders
+            WHERE company_id = c.id
+              AND status = 'SUBMITTED'
+            ORDER BY created_at DESC
+            LIMIT 1
+        ) submitted_po
+        WHERE c.id <> %s
+        ORDER BY c.created_at
+        LIMIT 1
+        """,
+        (test_company_data["company_id"],),
+    ).fetchone()
+
+    assert row, "Cross-company context with DRAFT and SUBMITTED PO not found"
+
+    return {
+        "company_id": str(row[0]),
+        "member_user_id": str(row[1]),
+        "po_id": str(row[2]),
+        "submitted_po_id": str(row[3]),
+    }
+
+
+@pytest.fixture
+def cross_company_data(test_db, test_company_data):
+    row = test_db.execute(
+        """
+        SELECT
+            c.id AS company_id,
+            p.id AS product_id,
+            s.id AS supplier_id
+        FROM companies c
+        CROSS JOIN LATERAL (
+            SELECT id
+            FROM products
+            WHERE company_id = c.id
+              AND is_active = TRUE
+            ORDER BY created_at
+            LIMIT 1
+        ) p
+        CROSS JOIN LATERAL (
+            SELECT id
+            FROM suppliers
+            WHERE company_id = c.id
+              AND is_active = TRUE
+            ORDER BY created_at
+            LIMIT 1
+        ) s
+        WHERE c.id <> %s
+        ORDER BY c.created_at
+        LIMIT 1
+        """,
+        (test_company_data["company_id"],),
+    ).fetchone()
+
+    assert row, "Cross-company product/supplier fixture not found"
+
+    return {
+        "company_id": str(row[0]),
+        "product_id": str(row[1]),
+        "supplier_id": str(row[2]),
+    }
+
+
 @pytest.fixture
 def purchase_request_lifecycle_fixture(
     base_url,
