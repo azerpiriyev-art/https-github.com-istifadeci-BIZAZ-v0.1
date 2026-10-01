@@ -25,3 +25,8 @@ backup-monitoring/
 main_*_backup.py
 main_before_*.py
 *_diff_check.txt
+
+# Local BIZAZ audit / recovery artifacts
+/backend/_audit_archive/
+/backend/audit_*.py
+/backend/_audit_collection_*.txt

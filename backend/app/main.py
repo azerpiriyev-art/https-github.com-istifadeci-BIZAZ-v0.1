@@ -1428,7 +1428,22 @@ def delete_product(
 
     db.delete(product)
 
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+
+        # PostgreSQL SQLSTATE 23503 = foreign_key_violation.
+        # Product biznes sənədlərində istifadə olunursa,
+        # DB-nin RESTRICT qaydasını biznes konflikti kimi qaytar.
+        if getattr(getattr(exc, "orig", None), "sqlstate", None) == "23503":
+            raise HTTPException(
+                status_code=409,
+                detail="Məhsul digər biznes sənədlərində istifadə olunduğuna görə silinə bilməz.",
+            )
+
+        # Gözlənilməyən IntegrityError-ləri gizlətmə.
+        raise
 
     return {
         "status": "success",
@@ -1482,6 +1497,20 @@ def create_product_price(
             status_code=404,
             detail="Məhsul tapılmadı.",
         )
+
+    if payload.supplier_id is not None:
+        supplier = db.scalar(
+            select(Supplier).where(
+                Supplier.id == payload.supplier_id,
+                Supplier.company_id == membership.company_id,
+            )
+        )
+
+        if not supplier:
+            raise HTTPException(
+                status_code=404,
+                detail="Təchizatçı tapılmadı.",
+            )
 
     price = ProductPrice(
         company_id=membership.company_id,
@@ -1614,6 +1643,20 @@ def update_product_price(
     updates = payload.model_dump(
         exclude_unset=True
     )
+
+    if "supplier_id" in updates and updates["supplier_id"] is not None:
+        supplier = db.scalar(
+            select(Supplier).where(
+                Supplier.id == updates["supplier_id"],
+                Supplier.company_id == membership.company_id,
+            )
+        )
+
+        if not supplier:
+            raise HTTPException(
+                status_code=404,
+                detail="Təchizatçı tapılmadı.",
+            )
 
     changes = {}
 
@@ -2010,7 +2053,23 @@ def delete_supplier(
 
     db.add(audit)
     db.delete(supplier)
-    db.commit()
+
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+
+        # PostgreSQL SQLSTATE 23503 = foreign_key_violation.
+        # Supplier biznes sənədlərində istifadə olunursa,
+        # DB-nin RESTRICT qaydasını biznes konflikti kimi qaytar.
+        if getattr(getattr(exc, "orig", None), "sqlstate", None) == "23503":
+            raise HTTPException(
+                status_code=409,
+                detail="Təchizatçı digər biznes sənədlərində istifadə olunduğuna görə silinə bilməz.",
+            )
+
+        # Gözlənilməyən IntegrityError-ləri gizlətmə.
+        raise
 
     return {
         "status": "success",
