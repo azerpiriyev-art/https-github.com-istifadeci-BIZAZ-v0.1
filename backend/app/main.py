@@ -3151,7 +3151,7 @@ class PurchaseOrderItemCreateSchema(BaseModel):
     product_id: uuid.UUID
     quantity: Decimal = Field(gt=0, max_digits=18, decimal_places=4)
     unit: str = Field(
-        default="╨ЩтДвd╨ЩтДвd",
+        default="\u0259d\u0259d",
         min_length=1,
         max_length=30,
     )
