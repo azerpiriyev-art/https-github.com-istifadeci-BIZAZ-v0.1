@@ -3,7 +3,7 @@
 ## Document control
 
 - Current synchronization: 2026-10-03
-- Confirmed version-control baseline: `f38a572` — `fix: remove BOM from encoding regression test`
+- Confirmed version-control baseline: `b6d3698` — `ci: enforce frontend npm security audit`
 - Rule: a stage is complete only with recorded acceptance evidence; a planned capability is not represented as delivered.
 
 ## Product roadmap
@@ -251,3 +251,33 @@ Acceptance evidence:
 - All four CI jobs passed.
 - Regression warnings: 44 dependency deprecation warnings; no test failures.
 - Code checkpoint: `f38a572`.
+
+### 4.23.12F — Frontend Dependency Security Hardening
+
+Status: Complete / PASS.
+
+Acceptance evidence:
+
+- Next.js `15.5.27`.
+- PostCSS override `8.5.28`.
+- Sharp override `0.35.5`.
+- `npm audit --audit-level=low`: **0 vulnerabilities**.
+- Clean `npm ci`: PASS.
+- Next.js production build: **13/13 routes PASS**.
+- Full backend regression: **197/197 PASS**.
+- GitHub Actions Run #24: **SUCCESS** for commit `d17739a`.
+
+### 4.23.12G — CI Security Enforcement
+
+Status: Complete / PASS.
+
+Acceptance evidence:
+
+- Explicit frontend `npm audit --audit-level=low` CI gate added before production build.
+- Local security-gate verification: PASS.
+- GitHub Actions Run #25: **SUCCESS** for commit `b6d3698`.
+- Frontend Security audit: **SUCCESS**.
+- Frontend production build: **SUCCESS**.
+- Backend syntax and full regression: **SUCCESS**.
+- PostgreSQL migration smoke check: **SUCCESS**.
+- Repository hygiene: **SUCCESS**.

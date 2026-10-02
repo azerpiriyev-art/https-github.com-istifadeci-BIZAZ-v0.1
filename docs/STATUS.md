@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-- Git baseline: `f38a572` — `fix: remove BOM from encoding regression test`
+- Git baseline: `b6d3698` — `ci: enforce frontend npm security audit`
 - Repository status at synchronization start: clean.
 - API health verified during this synchronization: `status=ok`, `service=bizaz-api`, `version=0.1.0`.
 - Docker/PostgreSQL and Windows scheduled-task status were not re-verified from this sandbox because those host capabilities are unavailable here. Their last approved operating result is recorded in the runbooks; live checks are required before production work.
@@ -19,7 +19,7 @@
 | Purchase Orders | рџџў Implemented | PO CRUD, controlled status transitions, company isolation, and audit acceptance tests exist. | Link to the request/offer flow. |
 | Purchase Requests / Supplier Offers / Comparison | 🟢 Implemented | Buyer purchase-request lifecycle, supplier offers, offer comparison, explicit supplier selection, purchase-order creation, authorization/company isolation, audit coverage, and expired-offer validation are implemented and covered by the procurement test suite. | 4.23.4 — frontend integration. |
 | Payments / Delivery / Reviews / Notifications / KPI | 🔴 Not implemented | MVP scope only; no completed delivery evidence in this baseline. | After the core procurement vertical slice. |
-| Automated Testing / CI | PASS | Local full backend regression: 195 passed; Payment acceptance suite: 38 passed; GitHub Actions Run #21 passed all four quality gates. | Maintain the automated regression gate for every code change. |
+| Automated Testing / CI | PASS | Local full backend regression: **197 passed**. Frontend security audit: **0 vulnerabilities**. GitHub Actions Run #25 passed all four quality gates, including the explicit frontend security audit gate. | Maintain the automated regression and security gates for every code change. |
 | Production Operations & Governance (4.18–4.22.9) | рџџў PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
 
 
@@ -238,3 +238,30 @@ Acceptance evidence:
 - GitHub CI jobs: Backend regression, PostgreSQL migration smoke check, Frontend production build, and Repository hygiene — all PASS.
 - Regression warnings: 44 dependency deprecation warnings; no test failures.
 - Code checkpoint: `f38a572`.
+
+## 4.23.12F — Frontend Dependency Security Hardening
+
+**Status: PASS**
+
+- Next.js: `15.5.27`.
+- Next.js PostCSS override: `8.5.28`.
+- Sharp override: `0.35.5`.
+- Frontend `npm audit --audit-level=low`: **0 vulnerabilities**.
+- Clean `npm ci`: PASS.
+- Next.js production build: **13/13 routes PASS**.
+- Backend full regression: **197/197 PASS**.
+- GitHub Actions Run #24 for commit `d17739a`: **SUCCESS**.
+- Release commit: `d17739a`.
+
+## 4.23.12G — CI Security Enforcement
+
+**Status: PASS**
+
+- Frontend `npm audit --audit-level=low` is an explicit CI gate before the production build.
+- Local security-gate verification: **PASS**.
+- GitHub Actions Run #25 for commit `b6d3698`: **SUCCESS**.
+- Frontend Security audit step: **SUCCESS**.
+- Frontend production build: **SUCCESS**.
+- Backend syntax and full regression: **SUCCESS**.
+- PostgreSQL migration smoke check: **SUCCESS**.
+- Repository hygiene: **SUCCESS**.
