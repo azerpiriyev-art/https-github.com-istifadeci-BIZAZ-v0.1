@@ -157,7 +157,7 @@ class Product(Base):
     unit: Mapped[str] = mapped_column(
         String(30),
         nullable=False,
-        default="Й™dЙ™d",
+        default="\u0259d\u0259d",
     )
     description: Mapped[str | None] = mapped_column(
         Text,
@@ -483,7 +483,7 @@ class PurchaseOrderItem(Base):
     unit: Mapped[str] = mapped_column(
         String(30),
         nullable=False,
-        default="Й™dЙ™d",
+        default="\u0259d\u0259d",
     )
 
     unit_price: Mapped[Decimal] = mapped_column(
