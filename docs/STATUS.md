@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-- Git baseline: `b6d3698` — `ci: enforce frontend npm security audit`
+- Git baseline: `7150636` — `docs: reconcile security release baseline`
 - Repository status at synchronization start: clean.
 - API health verified during this synchronization: `status=ok`, `service=bizaz-api`, `version=0.1.0`.
 - Docker/PostgreSQL and Windows scheduled-task status were not re-verified from this sandbox because those host capabilities are unavailable here. Their last approved operating result is recorded in the runbooks; live checks are required before production work.
@@ -12,13 +12,14 @@
 | Project Foundation | рџџў Ready | Version-controlled production baseline exists. | Maintain change control. |
 | Business Model | рџџЎ Defined | Foundation documentation exists; commercial/legal decisions remain owner-gated. | Resolve commercial terms before commercialization. |
 | MVP Scope | рџџў Defined | Current in-scope and excluded capabilities are documented. | Deliver the next vertical slice. |
-| Technical Architecture / Database | 🟢 Ready | FastAPI, PostgreSQL models, and the complete migration sequence are present; a fresh PostgreSQL 16 migration smoke test verified 20 required tables and 5 key constraints. | Execute the updated migration gate in GitHub Actions. |
+| Technical Architecture / Database | 🟢 Ready | FastAPI, PostgreSQL models, and the complete migration sequence are present; fresh PostgreSQL 16 migration smoke tests and the CI migration gate have passed. | Maintain the migration smoke gate in GitHub Actions. |
 | Authentication / RBAC | рџџў Implemented | Registration, login, current-user, company membership, and role checks are implemented. | Add CI and integration coverage. |
 | Company Management | рџџў Implemented | Company creation, lookup, and authorized update endpoints are implemented. | Extend only as required by the request/offer flow. |
 | Product & Supplier Catalog | рџџў Implemented | Product, price, and supplier CRUD endpoints are implemented with authorization and audit logging. | Validate in CI. |
 | Purchase Orders | рџџў Implemented | PO CRUD, controlled status transitions, company isolation, and audit acceptance tests exist. | Link to the request/offer flow. |
 | Purchase Requests / Supplier Offers / Comparison | 🟢 Implemented | Buyer purchase-request lifecycle, supplier offers, offer comparison, explicit supplier selection, purchase-order creation, authorization/company isolation, audit coverage, and expired-offer validation are implemented and covered by the procurement test suite. | 4.23.4 — frontend integration. |
-| Payments / Delivery / Reviews / Notifications / KPI | 🔴 Not implemented | MVP scope only; no completed delivery evidence in this baseline. | After the core procurement vertical slice. |
+| Payments | 🟢 Implemented | Payment Engine is implemented with payment creation/status APIs, RBAC, controlled state transitions, duplicate-reference protection, payment limits, audit logging, and approval integration; payment acceptance coverage is verified. | Maintain payment controls and acceptance coverage. |
+| Delivery / Reviews / Notifications / KPI | 🔴 Not implemented | No completed delivery evidence for these capabilities in this baseline. | After the core procurement vertical slice. |
 | Automated Testing / CI | PASS | Local full backend regression: **197 passed**. Frontend security audit: **0 vulnerabilities**. GitHub Actions Run #25 passed all four quality gates, including the explicit frontend security audit gate. | Maintain the automated regression and security gates for every code change. |
 | Production Operations & Governance (4.18–4.22.9) | рџџў PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
 

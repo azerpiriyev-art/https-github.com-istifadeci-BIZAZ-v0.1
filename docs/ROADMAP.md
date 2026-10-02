@@ -3,7 +3,7 @@
 ## Document control
 
 - Current synchronization: 2026-10-03
-- Confirmed version-control baseline: `b6d3698` — `ci: enforce frontend npm security audit`
+- Confirmed version-control baseline: `7150636` — `docs: reconcile security release baseline`
 - Rule: a stage is complete only with recorded acceptance evidence; a planned capability is not represented as delivered.
 
 ## Product roadmap
