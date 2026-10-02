@@ -2,8 +2,8 @@
 
 ## Document control
 
-- Current synchronization: 2026-09-26
-- Confirmed version-control baseline: `23d0c80` — `chore: establish BIZAZ v0.1 production baseline`
+- Current synchronization: 2026-10-03
+- Confirmed version-control baseline: `2ae1cb9` — `fix: harden payment reference and payment RBAC`
 - Rule: a stage is complete only with recorded acceptance evidence; a planned capability is not represented as delivered.
 
 ## Product roadmap
@@ -203,3 +203,28 @@ Acceptance evidence:
 - Full backend regression: 91/91 PASS.
 - Regression warnings: 84 dependency deprecation warnings; no test failures.
 - Development code checkpoint: c7a8997.
+
+### 4.23.10 - Payment Engine Hardening
+
+Status: Complete / PASS (implemented and regression-verified).
+
+Delivered scope:
+
+- Duplicate payment reference handling at API level with HTTP 409.
+- Transaction rollback on duplicate reference conflicts before returning the business-level error.
+- Payment creation role enforcement for `OWNER`, `ADMIN`, and `PROCUREMENT`.
+- Payment status operation role enforcement.
+- Preservation of cross-company isolation and payment state-machine controls.
+- Regression coverage for payment reference conflicts and payment RBAC.
+
+Acceptance evidence:
+
+- Targeted duplicate-reference test: PASS.
+- Payment creation RBAC: PASS.
+- Payment status RBAC: PASS.
+- Payment acceptance suite: 38/38 PASS.
+- Full backend regression: 193/193 PASS.
+- `git diff --check`: PASS.
+- GitHub Actions Run #18 for commit `2ae1cb9`: SUCCESS.
+- All four CI jobs passed.
+- Regression warnings: 44 dependency deprecation warnings; no test failures.

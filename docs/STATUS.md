@@ -1,8 +1,8 @@
-# BIZAZ Status — 2026-09-06
+# BIZAZ Status — 2026-10-03
 
 ## Current baseline
 
-- Git baseline: `23d0c80` — `chore: establish BIZAZ v0.1 production baseline`
+- Git baseline: `2ae1cb9` — `fix: harden payment reference and payment RBAC`
 - Repository status at synchronization start: clean.
 - API health verified during this synchronization: `status=ok`, `service=bizaz-api`, `version=0.1.0`.
 - Docker/PostgreSQL and Windows scheduled-task status were not re-verified from this sandbox because those host capabilities are unavailable here. Their last approved operating result is recorded in the runbooks; live checks are required before production work.
@@ -19,7 +19,7 @@
 | Purchase Orders | рџџў Implemented | PO CRUD, controlled status transitions, company isolation, and audit acceptance tests exist. | Link to the request/offer flow. |
 | Purchase Requests / Supplier Offers / Comparison | 🟢 Implemented | Buyer purchase-request lifecycle, supplier offers, offer comparison, explicit supplier selection, purchase-order creation, authorization/company isolation, audit coverage, and expired-offer validation are implemented and covered by the procurement test suite. | 4.23.4 — frontend integration. |
 | Payments / Delivery / Reviews / Notifications / KPI | 🔴 Not implemented | MVP scope only; no completed delivery evidence in this baseline. | After the core procurement vertical slice. |
-| Automated Testing / CI | PASS | Local backend regression: 158 passed; fresh PostgreSQL migration chain applied successfully; CI workflow updated to apply and verify the complete schema. | Execute and verify GitHub Actions on the next push or pull request. |
+| Automated Testing / CI | PASS | Local full backend regression: 193 passed; Payment acceptance suite: 38 passed; GitHub Actions Run #18 passed all quality gates. | Maintain the automated regression gate for every code change. |
 | Production Operations & Governance (4.18–4.22.9) | рџџў PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
 
 
@@ -179,3 +179,33 @@ Verification evidence:
 - Full backend regression: 91/91 PASS.
 - Regression warnings: 84 dependency deprecation warnings; no failures.
 - Code checkpoint: c7a8997.
+
+## 4.23.10 - Payment Engine Hardening
+
+**Status: PASS**
+
+The Payment Engine hardening slice is implemented and regression-verified.
+
+Confirmed implementation areas:
+
+- Duplicate non-null payment `reference` conflicts are handled at the API layer with HTTP 409.
+- Duplicate-reference failures are rolled back before the business-level error is returned.
+- Payment creation remains restricted to `OWNER`, `ADMIN`, and `PROCUREMENT`.
+- Payment status changes remain restricted to the configured payment operation roles.
+- Cross-company payment creation and status operations remain blocked.
+- Payment state transitions remain controlled by the existing payment state machine.
+- Payment creation and status changes continue to generate audit events.
+- Payment overpayment protection remains covered by the payment acceptance suite.
+
+Acceptance evidence:
+
+- Duplicate payment reference targeted test: PASS.
+- Payment creation RBAC test: PASS.
+- Payment status RBAC test: PASS.
+- Payment acceptance suite: **38/38 PASS**.
+- Full backend regression: **193/193 PASS**.
+- `git diff --check`: PASS.
+- GitHub Actions Run #18: **SUCCESS** for commit `2ae1cb9`.
+- GitHub CI jobs: Backend regression, PostgreSQL migration smoke check, Frontend production build, and Repository hygiene — all PASS.
+- Regression warnings: 44 dependency deprecation warnings; no test failures.
+- Code checkpoint: `2ae1cb9`.
