@@ -45,6 +45,13 @@ def auth_headers(base_url, test_credentials):
 
 @pytest.fixture(scope="session")
 def test_database_url():
+    ci_database_url = os.getenv("BIZAZ_TEST_DATABASE_URL")
+
+    if ci_database_url:
+        return ci_database_url.replace(
+            "postgresql+psycopg://", "postgresql://"
+        )
+
     root_env = os.path.abspath(
         os.path.join(os.path.dirname(__file__), "..", "..", ".env")
     )
@@ -64,8 +71,9 @@ def test_database_url():
         "Expected production database URL ending with /bizaz"
     )
 
-    return (database_url[:-5] + "bizaz_procurement_test").replace("postgresql+psycopg://", "postgresql://")
-
+    return (database_url[:-5] + "bizaz_procurement_test").replace(
+        "postgresql+psycopg://", "postgresql://"
+    )
 
 @pytest.fixture(scope="session")
 def test_db(test_database_url):
