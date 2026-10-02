@@ -100,7 +100,7 @@ def test_04_unauthenticated_blocked(
         timeout=10,
     )
 
-    assert response.status_code == 403
+    assert response.status_code == 401
 
 
 def test_05_cancelled_request_blocked(
