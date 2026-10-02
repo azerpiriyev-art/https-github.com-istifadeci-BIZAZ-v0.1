@@ -69,6 +69,7 @@ jobs:
           PYTHONPATH: .
           DATABASE_URL: postgresql+psycopg://bizaz_ci:bizaz_ci_password@127.0.0.1:5432/bizaz_procurement_test
           JWT_SECRET: ci-test-secret-not-for-production
+          BIZAZ_TEST_MODE: "true"
         run: |
           nohup python -m uvicorn app.main:app             --host 127.0.0.1             --port 8001             > /tmp/bizaz-uvicorn.log 2>&1 &
 
@@ -94,6 +95,7 @@ jobs:
           BIZAZ_TEST_DATABASE_URL: postgresql://bizaz_ci:bizaz_ci_password@127.0.0.1:5432/bizaz_procurement_test
           BIZAZ_TEST_BASE_URL: http://127.0.0.1:8001
           JWT_SECRET: ci-test-secret-not-for-production
+          BIZAZ_TEST_MODE: "true"
         run: python -m pytest -q tests
 
   migration-smoke:
