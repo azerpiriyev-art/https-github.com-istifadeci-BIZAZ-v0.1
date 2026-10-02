@@ -1,4 +1,4 @@
-﻿from app.models import Product, PurchaseOrderItem
+from app.models import Product, PurchaseOrderItem
 
 
 def test_product_unit_default_is_azerbaijani():
