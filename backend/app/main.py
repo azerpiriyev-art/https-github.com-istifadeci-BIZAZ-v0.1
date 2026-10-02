@@ -5417,7 +5417,31 @@ def create_payment(
     )
 
     db.add(payment)
-    db.flush()
+    try:
+        db.flush()
+    except IntegrityError as exc:
+        db.rollback()
+
+        sqlstate = (
+            getattr(exc.orig, "sqlstate", None)
+            or getattr(exc.orig, "pgcode", None)
+        )
+        constraint_name = getattr(
+            getattr(exc.orig, "diag", None),
+            "constraint_name",
+            None,
+        )
+
+        if (
+            sqlstate == "23505"
+            and constraint_name == "uq_payments_reference"
+        ):
+            raise HTTPException(
+                status_code=409,
+                detail="Payment reference already exists",
+            ) from exc
+
+        raise
 
     db.add(
         AuditLog(

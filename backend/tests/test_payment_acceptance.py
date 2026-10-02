@@ -795,6 +795,150 @@ def test_payment_limit_keeps_paid_payment(
     assert second.status_code == 400, second.text
 
 
+def test_256_duplicate_payment_reference_returns_409(
+    base_url,
+    auth_headers,
+    test_company_data,
+    test_database_url,
+):
+    po = _create_approved_po(base_url, auth_headers, test_company_data)
+    reference = f"DUP-REFERENCE-{uuid.uuid4().hex[:12].upper()}"
+    payment_id = None
+
+    try:
+        first = requests.post(
+            f"{base_url}/api/v1/payments",
+            headers=auth_headers,
+            json={
+                "purchase_order_id": po["id"],
+                "amount": 50,
+                "currency": "AZN",
+                "reference": reference,
+            },
+            timeout=10,
+        )
+
+        assert first.status_code == 201, first.text
+        payment_id = first.json()["id"]
+
+        second = requests.post(
+            f"{base_url}/api/v1/payments",
+            headers=auth_headers,
+            json={
+                "purchase_order_id": po["id"],
+                "amount": 50,
+                "currency": "AZN",
+                "reference": reference,
+            },
+            timeout=10,
+        )
+
+        assert second.status_code == 409, second.text
+        assert second.json()["detail"] == "Payment reference already exists"
+
+        db = psycopg.connect(test_database_url)
+        db.autocommit = True
+        try:
+            payment_count = db.execute(
+                """
+                SELECT COUNT(*)
+                FROM payments
+                WHERE reference = %s
+                """,
+                (reference,),
+            ).fetchone()[0]
+
+            audit_count = db.execute(
+                """
+                SELECT COUNT(*)
+                FROM audit_log
+                WHERE entity_type = 'payment'
+                  AND entity_id = %s
+                  AND action = 'PAYMENT_CREATED'
+                """,
+                (uuid.UUID(payment_id),),
+            ).fetchone()[0]
+
+            assert payment_count == 1
+            assert audit_count == 1
+        finally:
+            db.close()
+
+    finally:
+        if payment_id is not None:
+            _cleanup_payment(test_database_url, payment_id)
+
+
+def test_257_payment_creation_requires_payment_role(
+    base_url,
+    acceptance_owner_headers,
+    acceptance_viewer_headers,
+    acceptance_owner_data,
+):
+    po = _create_approved_po(
+        base_url,
+        acceptance_owner_headers,
+        acceptance_owner_data,
+    )
+
+    response = requests.post(
+        f"{base_url}/api/v1/payments",
+        headers=acceptance_viewer_headers,
+        json={
+            "purchase_order_id": po["id"],
+            "amount": 1,
+            "currency": "AZN",
+        },
+        timeout=10,
+    )
+
+    assert response.status_code == 403, response.text
+
+
+def test_258_payment_status_requires_payment_role(
+    base_url,
+    acceptance_owner_headers,
+    acceptance_viewer_headers,
+    acceptance_owner_data,
+    test_database_url,
+):
+    payment = _create_payment(
+        base_url,
+        acceptance_owner_headers,
+        acceptance_owner_data,
+    )
+
+    try:
+        response = _status(
+            base_url,
+            acceptance_viewer_headers,
+            payment["id"],
+            "PAID",
+        )
+
+        assert response.status_code == 403, response.text
+
+        db = psycopg.connect(test_database_url)
+        db.autocommit = True
+        try:
+            row = db.execute(
+                """
+                SELECT status
+                FROM payments
+                WHERE id = %s
+                """,
+                (uuid.UUID(payment["id"]),),
+            ).fetchone()
+
+            assert row is not None
+            assert row[0] == "PENDING"
+        finally:
+            db.close()
+
+    finally:
+        _cleanup_payment(test_database_url, payment["id"])
+
+
 def test_252_payment_negative_amount_rejected(
     base_url, auth_headers, test_company_data
 ):
