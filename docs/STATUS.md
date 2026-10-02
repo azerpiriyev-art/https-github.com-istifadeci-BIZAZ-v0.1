@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-- Git baseline: `2ae1cb9` — `fix: harden payment reference and payment RBAC`
+- Git baseline: `f38a572` — `fix: remove BOM from encoding regression test`
 - Repository status at synchronization start: clean.
 - API health verified during this synchronization: `status=ok`, `service=bizaz-api`, `version=0.1.0`.
 - Docker/PostgreSQL and Windows scheduled-task status were not re-verified from this sandbox because those host capabilities are unavailable here. Their last approved operating result is recorded in the runbooks; live checks are required before production work.
@@ -19,7 +19,7 @@
 | Purchase Orders | рџџў Implemented | PO CRUD, controlled status transitions, company isolation, and audit acceptance tests exist. | Link to the request/offer flow. |
 | Purchase Requests / Supplier Offers / Comparison | 🟢 Implemented | Buyer purchase-request lifecycle, supplier offers, offer comparison, explicit supplier selection, purchase-order creation, authorization/company isolation, audit coverage, and expired-offer validation are implemented and covered by the procurement test suite. | 4.23.4 — frontend integration. |
 | Payments / Delivery / Reviews / Notifications / KPI | 🔴 Not implemented | MVP scope only; no completed delivery evidence in this baseline. | After the core procurement vertical slice. |
-| Automated Testing / CI | PASS | Local full backend regression: 193 passed; Payment acceptance suite: 38 passed; GitHub Actions Run #18 passed all quality gates. | Maintain the automated regression gate for every code change. |
+| Automated Testing / CI | PASS | Local full backend regression: 195 passed; Payment acceptance suite: 38 passed; GitHub Actions Run #21 passed all four quality gates. | Maintain the automated regression gate for every code change. |
 | Production Operations & Governance (4.18–4.22.9) | рџџў PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
 
 
@@ -209,3 +209,32 @@ Acceptance evidence:
 - GitHub CI jobs: Backend regression, PostgreSQL migration smoke check, Frontend production build, and Repository hygiene — all PASS.
 - Regression warnings: 44 dependency deprecation warnings; no test failures.
 - Code checkpoint: `2ae1cb9`.
+
+## 4.23.11 - Residual UTF-8 Model/Test Hardening
+
+**Status: PASS**
+
+Residual UTF-8 encoding defects identified during the post-4.23.10 audit were corrected and regression-verified.
+
+Confirmed implementation areas:
+
+- `Product.unit` model default restored to the valid Azerbaijani value `ədəd`.
+- `PurchaseOrderItem.unit` model default restored to the valid Azerbaijani value `ədəd`.
+- New regression tests verify both SQLAlchemy model defaults.
+- UTF-8 BOM removed from `backend/tests/test_model_encoding_defaults.py`.
+- Model default verification uses Unicode codepoint checks to avoid shell-encoding ambiguity.
+- No business logic or API contract changes were introduced.
+
+Acceptance evidence:
+
+- Product unit default verification: PASS.
+- Purchase Order Item unit default verification: PASS.
+- Targeted regression test: **2/2 PASS**.
+- Full backend regression: **195/195 PASS**.
+- BOM audit: PASS.
+- Python compileall: PASS.
+- `git diff --check`: PASS.
+- GitHub Actions Run #21: **SUCCESS** for commit `f38a572`.
+- GitHub CI jobs: Backend regression, PostgreSQL migration smoke check, Frontend production build, and Repository hygiene — all PASS.
+- Regression warnings: 44 dependency deprecation warnings; no test failures.
+- Code checkpoint: `f38a572`.

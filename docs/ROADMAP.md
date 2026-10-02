@@ -3,7 +3,7 @@
 ## Document control
 
 - Current synchronization: 2026-10-03
-- Confirmed version-control baseline: `2ae1cb9` — `fix: harden payment reference and payment RBAC`
+- Confirmed version-control baseline: `f38a572` — `fix: remove BOM from encoding regression test`
 - Rule: a stage is complete only with recorded acceptance evidence; a planned capability is not represented as delivered.
 
 ## Product roadmap
@@ -228,3 +228,26 @@ Acceptance evidence:
 - GitHub Actions Run #18 for commit `2ae1cb9`: SUCCESS.
 - All four CI jobs passed.
 - Regression warnings: 44 dependency deprecation warnings; no test failures.
+
+### 4.23.11 - Residual UTF-8 Model/Test Hardening
+
+Status: Complete / PASS (implemented and regression-verified).
+
+Delivered scope:
+
+- Corrected residual mojibake model defaults for `Product.unit` and `PurchaseOrderItem.unit`.
+- Added regression coverage for both model defaults.
+- Removed UTF-8 BOM from the new regression test file.
+- Verified the corrected model values independently of shell encoding.
+
+Acceptance evidence:
+
+- Targeted tests: **2/2 PASS**.
+- Full backend regression: **195/195 PASS**.
+- BOM audit: PASS.
+- Python compileall: PASS.
+- `git diff --check`: PASS.
+- GitHub Actions Run #21: **SUCCESS**.
+- All four CI jobs passed.
+- Regression warnings: 44 dependency deprecation warnings; no test failures.
+- Code checkpoint: `f38a572`.
