@@ -3,7 +3,7 @@
 ## Document control
 
 - Current synchronization: 2026-10-03
-- Confirmed version-control baseline: `7150636` — `docs: reconcile security release baseline`
+- Confirmed version-control baseline: `25d1bc8` — `test: add true e2e need to payment vertical slice`
 - Rule: a stage is complete only with recorded acceptance evidence; a planned capability is not represented as delivered.
 
 ## Product roadmap
@@ -281,3 +281,27 @@ Acceptance evidence:
 - Backend syntax and full regression: **SUCCESS**.
 - PostgreSQL migration smoke check: **SUCCESS**.
 - Repository hygiene: **SUCCESS**.
+
+### 4.23.12H — True E2E Vertical Slice & Acceptance Hardening
+
+Status: Complete / PASS.
+
+Delivered scope:
+
+- Added a true end-to-end acceptance test for the integrated procurement-to-payment path.
+- Verified Need lifecycle and Need → Purchase Request conversion.
+- Verified Supplier Offer submission and Offer Comparison.
+- Verified Purchase Request approval through the Approval Engine.
+- Verified explicit Supplier Offer Selection and its Approval Engine gate.
+- Verified Purchase Order creation, submission, and Approval Engine approval.
+- Verified Payment record creation and resulting PENDING payment state.
+- Added deterministic cleanup for all entities created by the E2E test.
+
+Acceptance evidence:
+
+- Test: `backend/tests/test_true_e2e_vertical_slice.py::test_true_e2e_need_to_payment`.
+- Targeted E2E test: **1/1 PASS**.
+- Full backend regression: **198/198 PASS**.
+- GitHub Actions Run #28 for commit `25d1bc8`: **SUCCESS**.
+- All four CI jobs passed.
+- No production application code was changed by this slice; the delivered change is the E2E acceptance test.

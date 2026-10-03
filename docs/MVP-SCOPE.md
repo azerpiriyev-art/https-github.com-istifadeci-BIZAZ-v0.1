@@ -1,12 +1,12 @@
 # MVP Scope — v0.3 working scope
 
-## Delivery status at 4.23.1
+## Delivery status at 4.23.12H
 
 This section records delivery status; it does not expand the MVP scope.
 
-- Implemented baseline: registration/login, company membership/RBAC, company profile, product/supplier catalog primitives, purchase-order lifecycle, and audit logging.
-- Next vertical slice: buyer purchase request → supplier offer → comparison → supplier selection → purchase order.
-- Not yet delivered: purchase requests, supplier offers, offer comparison/selection, payment provider integration, delivery, reviews, notifications, and KPI dashboard.
+- Implemented baseline: registration/login, company membership/RBAC, company profile, product/supplier catalog primitives, Need lifecycle and conversion, buyer purchase requests, supplier offers, offer comparison/selection, purchase-order lifecycle, payment record/state, approval controls, and audit logging.
+- Next vertical slice: delivery status → reviews → notifications → KPI dashboard.
+- Not yet delivered: payment provider integration, delivery, reviews, notifications, and KPI dashboard.
 
 ## Must-have
 1. Registration/login.

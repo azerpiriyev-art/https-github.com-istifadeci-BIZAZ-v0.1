@@ -20,4 +20,32 @@ The GitHub Actions workflow runs on every push and pull request:
 3. Deterministic frontend dependency installation (`npm ci`) and production build (`npm run build`).
 4. Repository hygiene checks that reject tracked runtime `.env` files, generated backup/log artifacts, and private-key material.
 
-The purchase-order acceptance suite is intentionally not included in this isolated CI job yet: it makes stateful requests to a running API and relies on seeded business records. It remains an integration-environment gate until its fixtures are made self-contained.
+Stateful purchase-order and true E2E tests are included in the backend full-regression CI job. CI seeds acceptance data, starts the backend API, applies the complete migration sequence, and then runs `python -m pytest -q tests` against the seeded integration environment.
+
+## True E2E acceptance — 4.23.12H
+
+The true E2E acceptance test is:
+
+`backend/tests/test_true_e2e_vertical_slice.py::test_true_e2e_need_to_payment`
+
+Verified business chain:
+
+Need
+→ Need lifecycle
+→ Need → Purchase Request
+→ Supplier Offer
+→ Comparison
+→ Purchase Request Approval
+→ Supplier Selection
+→ Selection Approval
+→ Purchase Order
+→ Purchase Order Approval
+→ Payment
+
+Acceptance evidence:
+
+- Targeted test: **1/1 PASS**.
+- Full backend regression after the addition: **198/198 PASS**.
+- GitHub Actions Run #28: **SUCCESS**.
+- The E2E test performs cleanup of all created entities after execution.
+- Payment settlement is not asserted by this continuity test; payment state-transition behavior remains covered by the dedicated payment acceptance tests.
