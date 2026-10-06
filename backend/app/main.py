@@ -1,6 +1,7 @@
 from decimal import Decimal
 import uuid
 from datetime import datetime, date, timedelta, timezone
+from typing import Literal
 
 import jwt
 from fastapi import Depends, FastAPI, HTTPException, Request, Query
@@ -17,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
-from .models import ApprovalRequest, ApprovalStep, AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Payment, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User
+from .models import ApprovalRequest, ApprovalStep, AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Payment, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User, Delivery, DeliveryItem
 
 
 # ============================================================
@@ -248,6 +249,71 @@ def get_current_user(
 # ============================================================
 # HEALTH CHECK
 # ============================================================
+
+
+
+# ==================== DELIVERY SCHEMAS ====================
+
+class DeliveryCreateSchema(BaseModel):
+    purchase_order_id: uuid.UUID
+    delivery_number: str = Field(..., min_length=1, max_length=50)
+    scheduled_date: date | None = None
+    notes: str | None = None
+
+
+class DeliveryStatusUpdateSchema(BaseModel):
+    status: Literal[
+        "PLANNED",
+        "DISPATCHED",
+        "IN_TRANSIT",
+        "PARTIALLY_DELIVERED",
+        "DELIVERED",
+        "CANCELLED",
+    ]
+    received_by: uuid.UUID | None = None
+    notes: str | None = None
+
+
+class DeliveryItemCreateSchema(BaseModel):
+    purchase_order_item_id: uuid.UUID
+    quantity_delivered: Decimal = Field(..., gt=Decimal("0"))
+    notes: str | None = None
+
+
+class DeliveryItemResponseSchema(BaseModel):
+    id: uuid.UUID
+    delivery_id: uuid.UUID
+    purchase_order_id: uuid.UUID
+    purchase_order_item_id: uuid.UUID
+    quantity_delivered: Decimal
+    notes: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class DeliveryResponseSchema(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    purchase_order_id: uuid.UUID
+    supplier_id: uuid.UUID
+    delivery_number: str
+    status: str
+    scheduled_date: date | None = None
+    dispatched_at: datetime | None = None
+    delivered_at: datetime | None = None
+    received_by: uuid.UUID | None = None
+    notes: str | None = None
+    created_at: datetime
+    updated_at: datetime
+    items: list[DeliveryItemResponseSchema] = []
+
+
+class DeliveryListResponseSchema(BaseModel):
+    items: list[DeliveryResponseSchema]
+    total: int
+    page: int
+    limit: int
+    pages: int
 
 @app.get(
     "/health",
@@ -5341,6 +5407,645 @@ def create_purchase_order(
 class PaymentStatusUpdateSchema(BaseModel):
     status: str = Field(
         pattern="^(PENDING|PAID|FAILED|CANCELLED)$"
+    )
+
+
+@app.post("/api/v1/deliveries", response_model=DeliveryResponseSchema, status_code=201, tags=["deliveries"])
+@limiter.limit("60/minute")
+def create_delivery(
+    request: Request,
+    payload: DeliveryCreateSchema,
+    current_user: User = Depends(require_role("OWNER", "ADMIN", "PROCUREMENT")),
+    db: Session = Depends(get_db),
+):
+    membership = db.query(CompanyMember).filter(
+        CompanyMember.user_id == current_user.id,
+    ).first()
+
+    if not membership:
+        raise HTTPException(status_code=403, detail="Company membership required")
+
+    purchase_order = db.query(PurchaseOrder).filter(
+        PurchaseOrder.id == payload.purchase_order_id,
+        PurchaseOrder.company_id == membership.company_id,
+    ).first()
+
+    if not purchase_order:
+        raise HTTPException(status_code=404, detail="Purchase order not found")
+
+    if purchase_order.status != "APPROVED":
+        raise HTTPException(
+            status_code=409,
+            detail="Delivery can only be created for an APPROVED purchase order",
+        )
+
+    existing = db.query(Delivery).filter(
+        Delivery.company_id == membership.company_id,
+        Delivery.delivery_number == payload.delivery_number,
+    ).first()
+
+    if existing:
+        raise HTTPException(
+            status_code=409,
+            detail="Delivery number already exists",
+        )
+
+    delivery = Delivery(
+        company_id=membership.company_id,
+        purchase_order_id=purchase_order.id,
+        supplier_id=purchase_order.supplier_id,
+        delivery_number=payload.delivery_number,
+        status="PLANNED",
+        scheduled_date=payload.scheduled_date,
+        notes=payload.notes,
+    )
+
+    db.add(delivery)
+
+    try:
+        db.flush()
+    except IntegrityError:
+        db.rollback()
+        existing = db.query(Delivery).filter(
+            Delivery.company_id == membership.company_id,
+            Delivery.delivery_number == payload.delivery_number,
+        ).first()
+        if existing:
+            raise HTTPException(
+                status_code=409,
+                detail="Delivery number already exists",
+            )
+        raise
+
+    audit = AuditLog(
+        user_id=current_user.id,
+        company_id=membership.company_id,
+        action="DELIVERY_CREATED",
+        entity_type="delivery",
+        entity_id=delivery.id,
+        log_metadata={
+            "delivery_number": delivery.delivery_number,
+            "purchase_order_id": str(delivery.purchase_order_id),
+            "supplier_id": str(delivery.supplier_id),
+            "status": delivery.status,
+        },
+    )
+
+    db.add(audit)
+
+    try:
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+
+    db.refresh(delivery)
+
+    return DeliveryResponseSchema(
+        id=delivery.id,
+        company_id=delivery.company_id,
+        purchase_order_id=delivery.purchase_order_id,
+        supplier_id=delivery.supplier_id,
+        delivery_number=delivery.delivery_number,
+        status=delivery.status,
+        scheduled_date=delivery.scheduled_date,
+        dispatched_at=delivery.dispatched_at,
+        delivered_at=delivery.delivered_at,
+        received_by=delivery.received_by,
+        notes=delivery.notes,
+        created_at=delivery.created_at,
+        updated_at=delivery.updated_at,
+        items=[],
+    )
+
+
+@app.get(
+    "/api/v1/deliveries",
+    response_model=DeliveryListResponseSchema,
+    tags=["deliveries"],
+)
+@limiter.limit("60/minute")
+def list_deliveries(
+    request: Request,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    total = db.scalar(
+        select(func.count(Delivery.id)).where(
+            Delivery.company_id == membership.company_id
+        )
+    ) or 0
+
+    pages = (total + limit - 1) // limit if total > 0 else 0
+    offset = (page - 1) * limit
+
+    deliveries = db.scalars(
+        select(Delivery)
+        .where(
+            Delivery.company_id == membership.company_id
+        )
+        .order_by(
+            Delivery.created_at.desc(),
+            Delivery.id.desc(),
+        )
+        .offset(offset)
+        .limit(limit)
+    ).all()
+
+    results = []
+
+    for delivery in deliveries:
+        items = db.scalars(
+            select(DeliveryItem)
+            .where(
+                DeliveryItem.delivery_id == delivery.id,
+                DeliveryItem.purchase_order_id == delivery.purchase_order_id,
+            )
+            .order_by(DeliveryItem.created_at.asc())
+        ).all()
+
+        results.append(
+            DeliveryResponseSchema(
+                id=delivery.id,
+                company_id=delivery.company_id,
+                purchase_order_id=delivery.purchase_order_id,
+                supplier_id=delivery.supplier_id,
+                delivery_number=delivery.delivery_number,
+                status=delivery.status,
+                scheduled_date=delivery.scheduled_date,
+                dispatched_at=delivery.dispatched_at,
+                delivered_at=delivery.delivered_at,
+                received_by=delivery.received_by,
+                notes=delivery.notes,
+                created_at=delivery.created_at,
+                updated_at=delivery.updated_at,
+                items=[
+                    DeliveryItemResponseSchema(
+                        id=item.id,
+                        delivery_id=item.delivery_id,
+                        purchase_order_id=item.purchase_order_id,
+                        purchase_order_item_id=item.purchase_order_item_id,
+                        quantity_delivered=item.quantity_delivered,
+                        notes=item.notes,
+                        created_at=item.created_at,
+                        updated_at=item.updated_at,
+                    )
+                    for item in items
+                ],
+            )
+        )
+
+    return DeliveryListResponseSchema(
+        items=results,
+        total=total,
+        page=page,
+        limit=limit,
+        pages=pages,
+    )
+
+
+@app.get(
+    "/api/v1/deliveries/{delivery_id}",
+    response_model=DeliveryResponseSchema,
+    tags=["deliveries"],
+)
+@limiter.limit("60/minute")
+def get_delivery(
+    request: Request,
+    delivery_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    delivery = db.scalar(
+        select(Delivery).where(
+            Delivery.id == delivery_id,
+            Delivery.company_id == membership.company_id,
+        )
+    )
+
+    if not delivery:
+        raise HTTPException(
+            status_code=404,
+            detail="Delivery not found",
+        )
+
+    items = db.scalars(
+        select(DeliveryItem)
+        .where(
+            DeliveryItem.delivery_id == delivery.id,
+            DeliveryItem.purchase_order_id == delivery.purchase_order_id,
+        )
+        .order_by(DeliveryItem.created_at.asc())
+    ).all()
+
+    return DeliveryResponseSchema(
+        id=delivery.id,
+        company_id=delivery.company_id,
+        purchase_order_id=delivery.purchase_order_id,
+        supplier_id=delivery.supplier_id,
+        delivery_number=delivery.delivery_number,
+        status=delivery.status,
+        scheduled_date=delivery.scheduled_date,
+        dispatched_at=delivery.dispatched_at,
+        delivered_at=delivery.delivered_at,
+        received_by=delivery.received_by,
+        notes=delivery.notes,
+        created_at=delivery.created_at,
+        updated_at=delivery.updated_at,
+        items=[
+            DeliveryItemResponseSchema(
+                id=item.id,
+                delivery_id=item.delivery_id,
+                purchase_order_id=item.purchase_order_id,
+                purchase_order_item_id=item.purchase_order_item_id,
+                quantity_delivered=item.quantity_delivered,
+                notes=item.notes,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+            )
+            for item in items
+        ],
+    )
+
+
+
+@app.post(
+    "/api/v1/deliveries/{delivery_id}/items",
+    response_model=DeliveryItemResponseSchema,
+    status_code=201,
+    tags=["deliveries"],
+)
+@limiter.limit("60/minute")
+def create_delivery_item(
+    request: Request,
+    delivery_id: uuid.UUID,
+    payload: DeliveryItemCreateSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    if membership.role not in ("OWNER", "ADMIN", "PROCUREMENT"):
+        raise HTTPException(
+            status_code=403,
+            detail="Bu əməliyyat üçün səlahiyyətiniz yoxdur.",
+        )
+
+    delivery = db.scalar(
+        select(Delivery)
+        .where(
+            Delivery.id == delivery_id,
+            Delivery.company_id == membership.company_id,
+        )
+        .with_for_update()
+    )
+
+    if not delivery:
+        raise HTTPException(
+            status_code=404,
+            detail="Çatdırılma tapılmadı.",
+        )
+
+    purchase_order = db.scalar(
+        select(PurchaseOrder).where(
+            PurchaseOrder.id == delivery.purchase_order_id,
+            PurchaseOrder.company_id == membership.company_id,
+        )
+    )
+
+    if not purchase_order:
+        raise HTTPException(
+            status_code=404,
+            detail="Satınalma sifarişi tapılmadı.",
+        )
+
+    if purchase_order.status != "APPROVED":
+        raise HTTPException(
+            status_code=409,
+            detail="Çatdırılma elementi yalnız APPROVED satınalma sifarişi üçün əlavə edilə bilər.",
+        )
+
+    purchase_order_item = db.scalar(
+        select(PurchaseOrderItem).where(
+            PurchaseOrderItem.id == payload.purchase_order_item_id,
+            PurchaseOrderItem.purchase_order_id == purchase_order.id,
+        )
+    )
+
+    if not purchase_order_item:
+        raise HTTPException(
+            status_code=404,
+            detail="Satınalma sifarişinin elementi tapılmadı.",
+        )
+
+    existing_item = db.scalar(
+        select(DeliveryItem).where(
+            DeliveryItem.delivery_id == delivery.id,
+            DeliveryItem.purchase_order_item_id == payload.purchase_order_item_id,
+        )
+    )
+
+    if existing_item:
+        raise HTTPException(
+            status_code=409,
+            detail="Bu sifariş elementi üçün həmin çatdırılmada artıq sətir mövcuddur.",
+        )
+
+    delivered_total = db.scalar(
+        select(func.coalesce(func.sum(DeliveryItem.quantity_delivered), 0))
+        .where(
+            DeliveryItem.purchase_order_id == purchase_order.id,
+            DeliveryItem.purchase_order_item_id == purchase_order_item.id,
+        )
+    )
+
+    if delivered_total + payload.quantity_delivered > purchase_order_item.quantity:
+        raise HTTPException(
+            status_code=409,
+            detail="Çatdırılan miqdar sifariş edilmiş miqdarı aşa bilməz.",
+        )
+
+    delivery_item = DeliveryItem(
+        delivery_id=delivery.id,
+        purchase_order_id=purchase_order.id,
+        purchase_order_item_id=purchase_order_item.id,
+        quantity_delivered=payload.quantity_delivered,
+        notes=payload.notes,
+    )
+
+    db.add(delivery_item)
+    db.flush()
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            company_id=membership.company_id,
+            action="DELIVERY_ITEM_CREATED",
+            entity_type="delivery_item",
+            entity_id=delivery_item.id,
+            log_metadata={
+                "delivery_id": str(delivery.id),
+                "purchase_order_id": str(purchase_order.id),
+                "purchase_order_item_id": str(purchase_order_item.id),
+                "quantity_delivered": str(payload.quantity_delivered),
+            },
+        )
+    )
+
+    try:
+        db.commit()
+        db.refresh(delivery_item)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Çatdırılma elementi verilən qaydalara uyğun deyil.",
+        ) from exc
+
+    return DeliveryItemResponseSchema(
+        id=delivery_item.id,
+        delivery_id=delivery_item.delivery_id,
+        purchase_order_id=delivery_item.purchase_order_id,
+        purchase_order_item_id=delivery_item.purchase_order_item_id,
+        quantity_delivered=delivery_item.quantity_delivered,
+        notes=delivery_item.notes,
+        created_at=delivery_item.created_at,
+        updated_at=delivery_item.updated_at,
+)
+
+
+@app.get(
+    "/api/v1/deliveries/{delivery_id}/items",
+    response_model=list[DeliveryItemResponseSchema],
+    tags=["deliveries"],
+)
+@limiter.limit("60/minute")
+def list_delivery_items(
+    request: Request,
+    delivery_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    if membership.role not in ("OWNER", "ADMIN", "PROCUREMENT"):
+        raise HTTPException(
+            status_code=403,
+            detail="Bu əməliyyat üçün səlahiyyətiniz yoxdur.",
+        )
+
+    delivery = db.scalar(
+        select(Delivery).where(
+            Delivery.id == delivery_id,
+            Delivery.company_id == membership.company_id,
+        )
+    )
+
+    if not delivery:
+        raise HTTPException(
+            status_code=404,
+            detail="Çatdırılma tapılmadı.",
+        )
+
+    items = db.scalars(
+        select(DeliveryItem)
+        .where(
+            DeliveryItem.delivery_id == delivery.id,
+            DeliveryItem.purchase_order_id == delivery.purchase_order_id,
+        )
+        .order_by(
+            DeliveryItem.created_at.asc(),
+            DeliveryItem.id.asc(),
+        )
+    ).all()
+
+    return [
+        DeliveryItemResponseSchema(
+            id=item.id,
+            delivery_id=item.delivery_id,
+            purchase_order_id=item.purchase_order_id,
+            purchase_order_item_id=item.purchase_order_item_id,
+            quantity_delivered=item.quantity_delivered,
+            notes=item.notes,
+            created_at=item.created_at,
+            updated_at=item.updated_at,
+        )
+        for item in items
+    ]
+
+@app.post(
+    "/api/v1/deliveries/{delivery_id}/status",
+    response_model=DeliveryResponseSchema,
+    tags=["deliveries"],
+)
+@limiter.limit("60/minute")
+def update_delivery_status(
+    request: Request,
+    delivery_id: uuid.UUID,
+    payload: DeliveryStatusUpdateSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    if membership.role not in ("OWNER", "ADMIN", "PROCUREMENT"):
+        raise HTTPException(
+            status_code=403,
+            detail="Bu əməliyyat üçün kifayət qədər səlahiyyətiniz yoxdur.",
+        )
+
+    delivery = db.scalar(
+        select(Delivery)
+        .where(
+            Delivery.id == delivery_id,
+            Delivery.company_id == membership.company_id,
+        )
+        .with_for_update()
+    )
+
+    if not delivery:
+        raise HTTPException(
+            status_code=404,
+            detail="Delivery tapılmadı.",
+        )
+
+    current_status = delivery.status
+    new_status = payload.status
+
+    allowed_transitions = {
+        "PLANNED": {"DISPATCHED", "CANCELLED"},
+        "DISPATCHED": {"IN_TRANSIT", "CANCELLED"},
+        "IN_TRANSIT": {
+            "PARTIALLY_DELIVERED",
+            "DELIVERED",
+            "CANCELLED",
+        },
+        "PARTIALLY_DELIVERED": {
+            "PARTIALLY_DELIVERED",
+            "DELIVERED",
+            "CANCELLED",
+        },
+        "DELIVERED": set(),
+        "CANCELLED": set(),
+    }
+
+    if new_status == current_status:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Delivery artıq {current_status} statusundadır.",
+        )
+
+    if new_status not in allowed_transitions.get(current_status, set()):
+        raise HTTPException(
+            status_code=400,
+            detail=f"Yanlış Delivery status keçidi: {current_status} -> {new_status}",
+        )
+
+    if new_status == "DELIVERED" and payload.received_by is None:
+        raise HTTPException(
+            status_code=400,
+            detail="DELIVERED statusu üçün received_by tələb olunur.",
+        )
+
+    if new_status != "DELIVERED" and payload.received_by is not None:
+        raise HTTPException(
+            status_code=400,
+            detail="received_by yalnız DELIVERED statusu üçün göndərilə bilər.",
+        )
+
+    if payload.received_by is not None:
+        receiver_membership = db.scalar(
+            select(CompanyMember).where(
+                CompanyMember.user_id == payload.received_by,
+                CompanyMember.company_id == membership.company_id,
+            )
+        )
+
+        if receiver_membership is None:
+            raise HTTPException(
+                status_code=400,
+                detail="received_by istifadəçisi şirkət üzvü deyil.",
+            )
+
+    delivery.status = new_status
+
+    if payload.notes is not None:
+        delivery.notes = payload.notes
+
+    if new_status == "DELIVERED":
+        delivery.received_by = payload.received_by
+        if delivery.delivered_at is None:
+            delivery.delivered_at = datetime.now(timezone.utc)
+
+    db.add(
+        AuditLog(
+            user_id=current_user.id,
+            company_id=membership.company_id,
+            action="DELIVERY_STATUS_CHANGED",
+            entity_type="delivery",
+            entity_id=delivery.id,
+            log_metadata={
+                "delivery_number": delivery.delivery_number,
+                "old_status": current_status,
+                "new_status": new_status,
+                "purchase_order_id": str(delivery.purchase_order_id),
+                "supplier_id": str(delivery.supplier_id),
+            },
+        )
+    )
+
+    try:
+        db.commit()
+        db.refresh(delivery)
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(
+            status_code=400,
+            detail="Delivery status dəyişiklik qaydalarına uyğun deyil.",
+        ) from exc
+
+    items = db.scalars(
+        select(DeliveryItem)
+        .where(
+            DeliveryItem.delivery_id == delivery.id,
+            DeliveryItem.purchase_order_id == delivery.purchase_order_id,
+        )
+        .order_by(DeliveryItem.created_at.asc(), DeliveryItem.id.asc())
+    ).all()
+
+    return DeliveryResponseSchema(
+        id=delivery.id,
+        company_id=delivery.company_id,
+        purchase_order_id=delivery.purchase_order_id,
+        supplier_id=delivery.supplier_id,
+        delivery_number=delivery.delivery_number,
+        status=delivery.status,
+        scheduled_date=delivery.scheduled_date,
+        dispatched_at=delivery.dispatched_at,
+        delivered_at=delivery.delivered_at,
+        received_by=delivery.received_by,
+        notes=delivery.notes,
+        created_at=delivery.created_at,
+        updated_at=delivery.updated_at,
+        items=[
+            DeliveryItemResponseSchema(
+                id=item.id,
+                delivery_id=item.delivery_id,
+                purchase_order_id=item.purchase_order_id,
+                purchase_order_item_id=item.purchase_order_item_id,
+                quantity_delivered=item.quantity_delivered,
+                notes=item.notes,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+            )
+            for item in items
+        ],
     )
 
 @app.post("/api/v1/payments", status_code=201, tags=["payments"])

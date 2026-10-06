@@ -521,6 +521,174 @@ class PurchaseOrderItem(Base):
         server_default=func.now(),
     )
 
+
+class Delivery(Base):
+    __tablename__ = "deliveries"
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["purchase_order_id", "company_id", "supplier_id"],
+            ["purchase_orders.id", "purchase_orders.company_id", "purchase_orders.supplier_id"],
+            name="fk_deliveries_purchase_order_company_supplier",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["received_by", "company_id"],
+            ["company_members.user_id", "company_members.company_id"],
+            name="fk_deliveries_received_by_company",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "id",
+            "purchase_order_id",
+            name="uq_deliveries_id_purchase_order",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "delivery_number",
+            name="uq_deliveries_company_number",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    purchase_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("suppliers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+
+    delivery_number: Mapped[str] = mapped_column(
+        String(50),
+        nullable=False,
+    )
+
+    status: Mapped[str] = mapped_column(
+        String(30),
+        nullable=False,
+        default="PLANNED",
+    )
+
+    scheduled_date: Mapped[date | None] = mapped_column(
+        Date,
+        nullable=True,
+    )
+
+    dispatched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    delivered_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
+    received_by: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+    )
+
+    notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class DeliveryItem(Base):
+    __tablename__ = "delivery_items"
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["delivery_id", "purchase_order_id"],
+            ["deliveries.id", "deliveries.purchase_order_id"],
+            name="fk_delivery_items_delivery",
+            ondelete="CASCADE",
+        ),
+        ForeignKeyConstraint(
+            ["purchase_order_item_id", "purchase_order_id"],
+            ["purchase_order_items.id", "purchase_order_items.purchase_order_id"],
+            name="fk_delivery_items_purchase_order_item",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "delivery_id",
+            "purchase_order_item_id",
+            name="uq_delivery_items_delivery_item",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+
+    delivery_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+
+    purchase_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+
+    purchase_order_item_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+
+    quantity_delivered: Mapped[Decimal] = mapped_column(
+        Numeric(18, 4),
+        nullable=False,
+    )
+
+    notes: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
 class Need(Base):
     __tablename__ = "needs"
 
