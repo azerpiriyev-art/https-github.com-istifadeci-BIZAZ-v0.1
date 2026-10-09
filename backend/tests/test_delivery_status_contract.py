@@ -29,44 +29,67 @@ def test_cancelled_delivery_quantity_and_status_contract(
     test_db,
 ):
     company_id = uuid.UUID(test_company_data["company_id"])
+    supplier_id = uuid.UUID(test_company_data["supplier_id"])
+    product_id = uuid.UUID(test_company_data["product_id"])
     received_by = test_company_data["user_id"]
-
-    row = test_db.execute(
-        """
-        SELECT po.id, poi.id, poi.quantity
-        FROM purchase_orders po
-        JOIN purchase_order_items poi
-          ON poi.purchase_order_id = po.id
-        WHERE po.company_id = %s
-          AND po.status = 'APPROVED'
-          AND poi.quantity = 1.0000
-          AND (
-              SELECT count(*)
-              FROM purchase_order_items all_items
-              WHERE all_items.purchase_order_id = po.id
-          ) = 1
-          AND NOT EXISTS (
-              SELECT 1
-              FROM deliveries d
-              WHERE d.purchase_order_id = po.id
-          )
-        ORDER BY po.created_at DESC
-        LIMIT 1
-        """,
-        (company_id,),
-    ).fetchone()
-
-    assert row is not None, (
-        "Test üçün Delivery-si olmayan, bir item-li APPROVED PO tapılmadı"
-    )
-
-    po_id, po_item_id, ordered_quantity = row
-    assert ordered_quantity == 1
-
     suffix = uuid.uuid4().hex[:12].upper()
+    po_id = None
+    po_item_id = None
     delivery_ids = []
 
     try:
+        po_row = test_db.execute(
+            """
+            INSERT INTO purchase_orders (
+                company_id,
+                supplier_id,
+                order_number,
+                order_date,
+                status,
+                currency,
+                subtotal,
+                vat_amount,
+                total_amount,
+                notes
+            )
+            VALUES (
+                %s, %s, %s, CURRENT_DATE, 'APPROVED', 'AZN',
+                100.0000, 18.0000, 118.0000, %s
+            )
+            RETURNING id
+            """,
+            (
+                company_id,
+                supplier_id,
+                f"PO-R85E-{suffix}",
+                "R8.5-E isolated delivery regression fixture",
+            ),
+        ).fetchone()
+        assert po_row is not None
+        po_id = po_row[0]
+
+        item_row = test_db.execute(
+            """
+            INSERT INTO purchase_order_items (
+                purchase_order_id,
+                product_id,
+                quantity,
+                unit,
+                unit_price,
+                vat_rate,
+                vat_amount,
+                line_total
+            )
+            VALUES (
+                %s, %s, 1.0000, 'PCS', 100.0000, 18.00, 18.0000, 118.0000
+            )
+            RETURNING id
+            """,
+            (po_id, product_id),
+        ).fetchone()
+        assert item_row is not None
+        po_item_id = item_row[0]
+
         # 1. First delivery: 0.6000 of the ordered 1.0000.
         response = requests.post(
             f"{base_url}/api/v1/deliveries",
@@ -213,4 +236,18 @@ def test_cancelled_delivery_quantity_and_status_contract(
             test_db.execute(
                 "DELETE FROM deliveries WHERE id = %s",
                 (delivery_uuid,),
+            )
+
+        if po_id is not None:
+            test_db.execute(
+                "DELETE FROM audit_log WHERE entity_id = %s",
+                (po_id,),
+            )
+            test_db.execute(
+                "DELETE FROM purchase_order_items WHERE purchase_order_id = %s",
+                (po_id,),
+            )
+            test_db.execute(
+                "DELETE FROM purchase_orders WHERE id = %s",
+                (po_id,),
             )
