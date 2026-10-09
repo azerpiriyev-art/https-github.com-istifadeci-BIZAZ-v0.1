@@ -5927,7 +5927,6 @@ def update_delivery_status(
             "CANCELLED",
         },
         "PARTIALLY_DELIVERED": {
-            "PARTIALLY_DELIVERED",
             "DELIVERED",
             "CANCELLED",
         },
