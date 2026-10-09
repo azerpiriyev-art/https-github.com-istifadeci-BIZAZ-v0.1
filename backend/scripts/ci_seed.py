@@ -247,16 +247,8 @@ def upsert_po(
             'Deterministic CI seed PO'
         )
         ON CONFLICT (company_id, order_number)
-        DO UPDATE SET
-            supplier_id = EXCLUDED.supplier_id,
-            status = EXCLUDED.status,
-            currency = EXCLUDED.currency,
-            subtotal = EXCLUDED.subtotal,
-            vat_amount = EXCLUDED.vat_amount,
-            total_amount = EXCLUDED.total_amount,
-            notes = EXCLUDED.notes,
-            updated_at = now()
-        RETURNING id
+        DO NOTHING
+        RETURNING id, status
         """,
         (
             company_id,
@@ -266,8 +258,50 @@ def upsert_po(
         ),
     ).fetchone()
 
-    return row[0]
+    if row is not None:
+        return row[0]
 
+    existing = conn.execute(
+        """
+        SELECT id, status
+        FROM purchase_orders
+        WHERE company_id = %s
+          AND order_number = %s
+        FOR UPDATE
+        """,
+        (company_id, order_number),
+    ).fetchone()
+
+    if existing is None:
+        raise RuntimeError(
+            f"CI seed PO {order_number!r} conflict sonrası tapılmadı."
+        )
+
+    purchase_order_id, existing_status = existing
+
+    if existing_status != status:
+        raise RuntimeError(
+            f"CI seed PO {order_number!r} statusu {existing_status!r}-dir; "
+            f"{status!r} gözlənilirdi. Mövcud status zorla dəyişdirilməyəcək. "
+            "Təmiz CI test bazasından istifadə edin."
+        )
+
+    conn.execute(
+        """
+        UPDATE purchase_orders
+        SET supplier_id = %s,
+            currency = 'AZN',
+            subtotal = 100.0000,
+            vat_amount = 18.0000,
+            total_amount = 118.0000,
+            notes = 'Deterministic CI seed PO',
+            updated_at = now()
+        WHERE id = %s
+        """,
+        (supplier_id, purchase_order_id),
+    )
+
+    return purchase_order_id
 
 def ensure_po_item(
     conn,
