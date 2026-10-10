@@ -48,6 +48,31 @@ def test_h115_01_cross_company_payment_approval_creation_blocked(
         assert po_row is not None
         po_id, currency = po_row
 
+        status_row = db.execute(
+            "SELECT status FROM purchase_orders WHERE id = %s",
+            (po_id,),
+        ).fetchone()
+        assert status_row is not None
+        po_status = status_row[0]
+
+        if po_status == "DRAFT":
+            db.execute(
+                "UPDATE purchase_orders SET status = 'SUBMITTED' WHERE id = %s",
+                (po_id,),
+            )
+            po_status = "SUBMITTED"
+
+        if po_status == "SUBMITTED":
+            db.execute(
+                "UPDATE purchase_orders SET status = 'APPROVED' WHERE id = %s",
+                (po_id,),
+            )
+            po_status = "APPROVED"
+
+        assert po_status in ("APPROVED", "RECEIVED"), (
+            f"Foreign fixture PO has unexpected status: {po_status}"
+        )
+
         db.execute(
             """
             INSERT INTO payments (
@@ -157,6 +182,31 @@ def test_h115_02_cross_company_payment_approval_decision_blocked(
 
         assert po_row is not None
         po_id, currency = po_row
+
+        status_row = db.execute(
+            "SELECT status FROM purchase_orders WHERE id = %s",
+            (po_id,),
+        ).fetchone()
+        assert status_row is not None
+        po_status = status_row[0]
+
+        if po_status == "DRAFT":
+            db.execute(
+                "UPDATE purchase_orders SET status = 'SUBMITTED' WHERE id = %s",
+                (po_id,),
+            )
+            po_status = "SUBMITTED"
+
+        if po_status == "SUBMITTED":
+            db.execute(
+                "UPDATE purchase_orders SET status = 'APPROVED' WHERE id = %s",
+                (po_id,),
+            )
+            po_status = "APPROVED"
+
+        assert po_status in ("APPROVED", "RECEIVED"), (
+            f"Foreign fixture PO has unexpected status: {po_status}"
+        )
 
         db.execute(
             """

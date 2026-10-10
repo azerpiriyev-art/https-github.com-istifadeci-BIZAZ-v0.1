@@ -342,39 +342,22 @@ def test_16_audit_create_and_status(base_url, acceptance_owner_headers, acceptan
     assert response.status_code == 200
     assert response.json()["status"] == "SUBMITTED"
 
-def test_17_update_total_below_active_payment_blocked(base_url, acceptance_owner_headers, acceptance_owner_data):
+def test_17_draft_purchase_order_payment_creation_rejected(
+    base_url, acceptance_owner_headers, acceptance_owner_data
+):
     po = create_po(base_url, acceptance_owner_headers, acceptance_owner_data)
 
-    payment_response = requests.post(
+    response = requests.post(
         f"{base_url}/api/v1/payments",
         headers=acceptance_owner_headers,
         json={
             "purchase_order_id": po["id"],
             "amount": 100,
             "currency": "AZN",
-            "reference": f"PO-UPDATE-LIMIT-TEST-{uuid.uuid4()}",
+            "reference": f"PO-DRAFT-PAYMENT-REJECT-{uuid.uuid4()}",
         },
         timeout=10,
     )
 
-    assert payment_response.status_code == 201, payment_response.text
-
-    response = requests.put(
-        f"{base_url}/api/v1/purchase-orders/{po['id']}",
-        headers=acceptance_owner_headers,
-        json={
-            "items": [
-                {
-                    "product_id": acceptance_owner_data["product_id"],
-                    "quantity": 1,
-                    "unit": "ədəd",
-                    "unit_price": 50,
-                    "vat_rate": 18,
-                }
-            ]
-        },
-        timeout=10,
-    )
-
-    assert response.status_code == 400, response.text
-    assert "payment" in response.text.lower() or "?d?ni?" in response.text.lower()
+    assert response.status_code == 409, response.text
+    assert "APPROVED or RECEIVED" in response.text

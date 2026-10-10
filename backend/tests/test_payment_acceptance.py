@@ -247,6 +247,31 @@ def test_236_cross_company_payment_creation_blocked(
 
         foreign_po_id = row[0]
 
+        status_row = db.execute(
+            "SELECT status FROM purchase_orders WHERE id = %s",
+            (foreign_po_id,),
+        ).fetchone()
+        assert status_row is not None
+        po_status = status_row[0]
+
+        if po_status == "DRAFT":
+            db.execute(
+                "UPDATE purchase_orders SET status = 'SUBMITTED' WHERE id = %s",
+                (foreign_po_id,),
+            )
+            po_status = "SUBMITTED"
+
+        if po_status == "SUBMITTED":
+            db.execute(
+                "UPDATE purchase_orders SET status = 'APPROVED' WHERE id = %s",
+                (foreign_po_id,),
+            )
+            po_status = "APPROVED"
+
+        assert po_status in ("APPROVED", "RECEIVED"), (
+            f"Foreign fixture PO has unexpected status: {po_status}"
+        )
+
         response = requests.post(
             f"{base_url}/api/v1/payments",
             headers=auth_headers,

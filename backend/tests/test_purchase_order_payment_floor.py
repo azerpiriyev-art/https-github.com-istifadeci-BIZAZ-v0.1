@@ -1,5 +1,6 @@
 import uuid
 import requests
+import psycopg
 
 
 def create_po(base_url, headers, test_company_data):
@@ -47,21 +48,70 @@ def update_total(base_url, headers, po_id, unit_price, test_company_data):
     )
 
 
-def create_payment(base_url, headers, po_id, amount, status=None):
-    response = requests.post(
-        f"{base_url}/api/v1/payments",
-        headers=headers,
-        json={
-            "purchase_order_id": po_id,
-            "amount": amount,
-            "currency": "AZN",
-            "reference": f"PO-FLOOR-{uuid.uuid4()}",
-        },
-        timeout=10,
-    )
-    assert response.status_code == 201, response.text
+def create_payment(
+    base_url,
+    headers,
+    po_id,
+    amount,
+    status=None,
+    test_database_url=None,
+):
+    """Seed a legacy payment row for historical DRAFT-PO regression tests."""
+    assert test_database_url, "test_database_url is required"
 
-    payment = response.json()
+    payment_id = uuid.uuid4()
+    reference = f"PO-FLOOR-LEGACY-{uuid.uuid4().hex}"
+
+    db = psycopg.connect(test_database_url)
+    try:
+        po = db.execute(
+            """
+            SELECT company_id, currency, status
+            FROM purchase_orders
+            WHERE id = %s
+            """,
+            (uuid.UUID(str(po_id)),),
+        ).fetchone()
+
+        assert po is not None, f"Purchase Order {po_id} does not exist"
+        assert po[2] == "DRAFT", (
+            "Legacy payment fixture requires a DRAFT purchase order"
+        )
+
+        try:
+            db.execute(
+                "ALTER TABLE payments DISABLE TRIGGER "
+                "trg_validate_payment_purchase_order"
+            )
+            db.execute(
+                """
+                INSERT INTO payments (
+                    id, company_id, purchase_order_id,
+                    amount, currency, status, reference
+                )
+                VALUES (%s, %s, %s, %s, %s, 'PENDING', %s)
+                """,
+                (
+                    payment_id, po[0], uuid.UUID(str(po_id)),
+                    amount, po[1], reference,
+                ),
+            )
+            db.execute(
+                "ALTER TABLE payments ENABLE TRIGGER "
+                "trg_validate_payment_purchase_order"
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+            raise
+    finally:
+        db.close()
+
+    payment = {
+        "id": str(payment_id),
+        "purchase_order_id": str(po_id),
+        "reference": reference,
+    }
 
     if status:
         response = requests.post(
@@ -75,44 +125,65 @@ def create_payment(base_url, headers, po_id, amount, status=None):
     return payment
 
 
-def test_pending_payment_exact_total_allowed(base_url, auth_headers, test_company_data):
+def test_pending_payment_exact_total_allowed(base_url, auth_headers, test_company_data, test_database_url):
     headers = auth_headers
     po = create_po(base_url, headers, test_company_data)
 
-    create_payment(base_url, headers, po["id"], 100)
+    create_payment(base_url, headers, po["id"], 100, test_database_url=test_database_url)
 
     response = update_total(base_url, headers, po["id"], 100, test_company_data)
 
     assert response.status_code == 200, response.text
     assert float(response.json()["total_amount"]) == 100
 
-def test_failed_payment_does_not_block_total_reduction(base_url, auth_headers, test_company_data):
+def test_pending_payment_blocks_total_reduction(
+    base_url, auth_headers, test_company_data, test_database_url
+):
+    po = create_po(base_url, auth_headers, test_company_data)
+
+    create_payment(
+        base_url,
+        auth_headers,
+        po["id"],
+        100,
+        test_database_url=test_database_url,
+    )
+
+    response = update_total(
+        base_url, auth_headers, po["id"], 99, test_company_data
+    )
+
+    assert response.status_code == 400, response.text
+    assert "payment" in response.text.lower()
+
+
+def test_failed_payment_does_not_block_total_reduction(base_url, auth_headers, test_company_data, test_database_url):
     headers = auth_headers
     po = create_po(base_url, headers, test_company_data)
 
-    create_payment(base_url, headers, po["id"], 100, status="FAILED")
+    create_payment(base_url, headers, po["id"], 100, status="FAILED", test_database_url=test_database_url)
 
     response = update_total(base_url, headers, po["id"], 50, test_company_data)
 
     assert response.status_code == 200, response.text
     assert float(response.json()["total_amount"]) == 50
 
-def test_cancelled_payment_does_not_block_total_reduction(base_url, auth_headers, test_company_data):
+def test_cancelled_payment_does_not_block_total_reduction(base_url, auth_headers, test_company_data, test_database_url):
     headers = auth_headers
     po = create_po(base_url, headers, test_company_data)
 
-    create_payment(base_url, headers, po["id"], 100, status="CANCELLED")
+    create_payment(base_url, headers, po["id"], 100, status="CANCELLED", test_database_url=test_database_url)
 
     response = update_total(base_url, headers, po["id"], 50, test_company_data)
 
     assert response.status_code == 200, response.text
     assert float(response.json()["total_amount"]) == 50
 
-def test_paid_payment_blocks_total_reduction(base_url, auth_headers, test_company_data):
+def test_paid_payment_blocks_total_reduction(base_url, auth_headers, test_company_data, test_database_url):
     headers = auth_headers
     po = create_po(base_url, headers, test_company_data)
 
-    create_payment(base_url, headers, po["id"], 100, status="PAID")
+    create_payment(base_url, headers, po["id"], 100, status="PAID", test_database_url=test_database_url)
 
     response = update_total(base_url, headers, po["id"], 99, test_company_data)
 
@@ -157,11 +228,11 @@ def test_update_item_null_quantity_must_be_rejected(base_url, auth_headers, test
 
     assert response.status_code == 422, response.text
 
-def test_active_payment_blocks_currency_change(base_url, auth_headers, test_company_data):
+def test_active_payment_blocks_currency_change(base_url, auth_headers, test_company_data, test_database_url):
     headers = auth_headers
     po = create_po(base_url, headers, test_company_data)
 
-    create_payment(base_url, headers, po["id"], 100)
+    create_payment(base_url, headers, po["id"], 100, test_database_url=test_database_url)
 
     response = requests.put(
         f"{base_url}/api/v1/purchase-orders/{po['id']}",
@@ -191,11 +262,11 @@ def test_currency_change_allowed_without_active_payment(base_url, auth_headers, 
     assert response.status_code == 200, response.text
     assert response.json()["currency"] == "USD"
 
-def test_active_payment_blocks_supplier_change(base_url, auth_headers, test_company_data, alternate_supplier_data):
+def test_active_payment_blocks_supplier_change(base_url, auth_headers, test_company_data, alternate_supplier_data, test_database_url):
     headers = auth_headers
     po = create_po(base_url, headers, test_company_data)
 
-    create_payment(base_url, headers, po["id"], 100)
+    create_payment(base_url, headers, po["id"], 100, test_database_url=test_database_url)
 
     response = requests.put(
         f"{base_url}/api/v1/purchase-orders/{po['id']}",
@@ -453,37 +524,25 @@ def test_submitted_to_approved_without_approval_request_is_measured(base_url, au
     assert approve.status_code in (200, 409), approve.text
 
 
-def test_draft_purchase_order_with_payment_delete_is_measured(base_url, auth_headers, test_company_data):
-    headers = auth_headers
-    po = create_po(base_url, headers, test_company_data)
-
-    payment = requests.post(
-        f"{base_url}/api/v1/payments",
-        headers=headers,
-        json={
-            "purchase_order_id": po["id"],
-            "amount": "100.00",
-            "currency": "AZN",
-            "reference": f"PAYMENT-DELETE-DIAG-{uuid.uuid4().hex[:10]}",
-        },
-        timeout=10,
+def test_draft_purchase_order_with_payment_delete_is_measured(
+    base_url, auth_headers, test_company_data, test_database_url
+):
+    po = create_po(base_url, auth_headers, test_company_data)
+    create_payment(
+        base_url, auth_headers, po["id"], 100,
+        test_database_url=test_database_url,
     )
 
-    print("PAYMENT_CREATE_RESULT=", payment.status_code, payment.text)
-    assert payment.status_code == 201, payment.text
-
-    delete = requests.delete(
+    response = requests.delete(
         f"{base_url}/api/v1/purchase-orders/{po['id']}",
-        headers=headers,
+        headers=auth_headers,
         timeout=10,
     )
-
-    print("PO_DELETE_RESULT=", delete.status_code, delete.text)
-
-    assert delete.status_code in (200, 400, 409, 500), delete.text
+    assert response.status_code == 409, response.text
+    assert "payment" in response.text.lower()
 
 
-def test_failed_item_update_rolls_back_existing_items_and_total(base_url, auth_headers, test_company_data):
+def test_failed_item_update_rolls_back_existing_items_and_total(base_url, auth_headers, test_company_data, test_database_url):
     headers = auth_headers
     po = create_po(base_url, headers, test_company_data)
 
@@ -495,7 +554,7 @@ def test_failed_item_update_rolls_back_existing_items_and_total(base_url, auth_h
     assert before_response.status_code == 200, before_response.text
     before = before_response.json()
 
-    create_payment(base_url, headers, po["id"], 590)
+    create_payment(base_url, headers, po["id"], 590, test_database_url=test_database_url)
 
     response = update_total(base_url, headers, po["id"], 100, test_company_data)
 
