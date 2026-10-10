@@ -6082,6 +6082,12 @@ def create_payment(
             detail="Purchase order not found",
         )
 
+    if purchase_order.status not in ("APPROVED", "RECEIVED"):
+        raise HTTPException(
+            status_code=409,
+            detail="Payment can only be created for an APPROVED or RECEIVED purchase order",
+        )
+
     currency = payload.currency.strip().upper()
 
     po_total = purchase_order.total_amount or Decimal("0")

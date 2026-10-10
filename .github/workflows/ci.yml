@@ -125,11 +125,13 @@ jobs:
       - name: Verify required schema
         shell: bash
         run: |
-          table_count=$(docker exec -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users','companies','company_members','audit_log','products','product_prices','suppliers','purchase_orders','purchase_order_items','purchase_requests','purchase_request_items','supplier_offers','supplier_offer_items','offer_selections','needs','need_items','need_pr_conversions','approval_requests','approval_steps','payments');")
-          test "$table_count" = "20"
+          table_count=$(docker exec -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('users','companies','company_members','audit_log','products','product_prices','suppliers','purchase_orders','purchase_order_items','purchase_requests','purchase_request_items','supplier_offers','supplier_offer_items','offer_selections','needs','need_items','need_pr_conversions','approval_requests','approval_steps','payments','deliveries','delivery_items');")
+          test "$table_count" = "22"
 
           constraint_count=$(docker exec -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -Atqc "SELECT count(*) FROM pg_constraint WHERE conname IN ('uq_products_company_sku','uq_suppliers_company_tax_id','chk_product_prices_type','product_prices_amount_check','uq_supplier_offer_items_offer_request_item');")
           test "$constraint_count" = "5"
+          trigger_count=$(docker exec -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -Atqc "SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname IN ('trg_validate_payment_purchase_order','trg_validate_payment_state','trg_validate_purchase_order_state','trg_validate_delivery_state');")
+          test "$trigger_count" = "4"
 
   frontend-build:
     name: Frontend production build
