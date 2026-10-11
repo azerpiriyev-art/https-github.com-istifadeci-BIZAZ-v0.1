@@ -1,7 +1,9 @@
 import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 import requests
+from pwdlib import PasswordHash
 
 
 def _create_approved_purchase_order(
@@ -300,3 +302,124 @@ def test_viewer_role_cannot_create_review(
         timeout=15,
     )
     assert response.status_code == 403, response.text
+
+
+
+def test_review_concurrent_duplicate_submission_creates_one_row(
+    base_url,
+    auth_headers,
+    test_company_data,
+    test_db,
+):
+    purchase_order = _create_approved_purchase_order(
+        base_url,
+        auth_headers,
+        test_company_data,
+    )
+    _complete_delivery(
+        base_url,
+        auth_headers,
+        test_company_data,
+        purchase_order,
+    )
+
+    def submit():
+        response = requests.post(
+            f"{base_url}/api/v1/purchase-orders/{purchase_order['id']}/review",
+            headers=auth_headers,
+            json={"rating": 5, "comment": "Paralel sorğu testi"},
+            timeout=20,
+        )
+        return response.status_code, response.text
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        results = list(pool.map(lambda _: submit(), range(4)))
+
+    statuses = [status for status, _ in results]
+    assert statuses.count(201) == 1, results
+    assert statuses.count(409) == 3, results
+
+    count = test_db.execute(
+        "SELECT count(*) FROM reviews WHERE purchase_order_id = %s",
+        (uuid.UUID(purchase_order["id"]),),
+    ).fetchone()[0]
+    assert count == 1
+
+
+def test_only_review_author_can_edit_and_edit_window_expires(
+    base_url,
+    auth_headers,
+    test_company_data,
+    test_db,
+):
+    purchase_order = _create_approved_purchase_order(
+        base_url,
+        auth_headers,
+        test_company_data,
+    )
+    _complete_delivery(
+        base_url,
+        auth_headers,
+        test_company_data,
+        purchase_order,
+    )
+    created = requests.post(
+        f"{base_url}/api/v1/purchase-orders/{purchase_order['id']}/review",
+        headers=auth_headers,
+        json={"rating": 5},
+        timeout=15,
+    )
+    assert created.status_code == 201, created.text
+    review_id = uuid.UUID(created.json()["id"])
+
+    other_user_id = uuid.uuid4()
+    other_email = f"review-non-author-{other_user_id.hex}@example.com"
+    other_password = "Review-Author-Test-2026!"
+    password_hash = PasswordHash.recommended().hash(other_password)
+    test_db.execute(
+        """
+        INSERT INTO users (id, email, password_hash, full_name, is_active)
+        VALUES (%s, %s, %s, %s, TRUE)
+        """,
+        (other_user_id, other_email, password_hash, "Rəy müəllifi olmayan üzv"),
+    )
+    test_db.execute(
+        """
+        INSERT INTO company_members (user_id, company_id, role)
+        VALUES (%s, %s, 'PROCUREMENT')
+        """,
+        (other_user_id, uuid.UUID(test_company_data["company_id"])),
+    )
+
+    login = requests.post(
+        f"{base_url}/api/v1/login",
+        json={"email": other_email, "password": other_password},
+        timeout=15,
+    )
+    assert login.status_code == 200, login.text
+    other_headers = {"Authorization": f"Bearer {login.json()['token']}"}
+    forbidden = requests.patch(
+        f"{base_url}/api/v1/purchase-orders/{purchase_order['id']}/review",
+        headers=other_headers,
+        json={"rating": 3},
+        timeout=15,
+    )
+    assert forbidden.status_code == 403, forbidden.text
+
+    test_db.execute(
+        "UPDATE reviews SET created_at = now() - interval '25 hours' WHERE id = %s",
+        (review_id,),
+    )
+    expired = requests.patch(
+        f"{base_url}/api/v1/purchase-orders/{purchase_order['id']}/review",
+        headers=auth_headers,
+        json={"rating": 2},
+        timeout=15,
+    )
+    assert expired.status_code == 409, expired.text
+
+    row = test_db.execute(
+        "SELECT rating FROM reviews WHERE id = %s",
+        (review_id,),
+    ).fetchone()
+    assert row[0] == 5
