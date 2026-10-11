@@ -366,23 +366,46 @@ Acceptance evidence:
 - Post-merge GitHub Actions Run #74 and PR validation Run #73 attempt 2 passed all four quality gates.
 
 
-## 4.23.15 — Reviews & Ratings (next MVP vertical slice)
+## 4.23.15 — Reviews & Ratings
 
-Status: Implementation available in `feature/review-ratings`; validation and merge review pending.
+**Status: Complete / PASS — merged to `master` in PR #2 on 2026-10-11.**
 
-Contract: `docs/REVIEW-RATINGS-SPEC.md`. MVP scope is tenant-scoped, one review per delivered Purchase Order, OWNER/ADMIN/PROCUREMENT author roles, 1–5 rating, optional 2000-character comment, 24-hour author edit and audit. Do not merge until the latest CI and acceptance evidence are reviewed.
+Merge commit: `4f7369663802bd49296055694b00bf34a7d8bbc9`.
 
-Rationale: the delivery slice is now merged and verified. The MVP scope identifies Review/Rating, basic notifications, and the core KPI dashboard as remaining must-have capabilities. Reviews are the next slice in the recorded MVP sequence, followed by notifications and KPI.
+Delivered scope:
 
-Before schema or API changes, the product contract must explicitly settle which subject is reviewable (supplier/company, product/service, or completed transaction), who can review whom, eligibility after delivery, duplicate-review rules, edit/withdraw policy, moderation, and audit requirements. These are not fully specified by the current MVP scope and must not be silently assumed.
+- Additive PostgreSQL migration `014_review_ratings.sql` and SQLAlchemy `Review` model.
+- Tenant-scoped POST/GET/PATCH review APIs for a Purchase Order and paginated supplier review-list API.
+- Batch endpoint `POST /api/v1/reviews/summary` returns reviews for tenant-owned Purchase Orders and per-supplier rating aggregates without one detail request per order.
+- Review creation is limited to eligible, fully delivered Purchase Orders, active users, and the `OWNER`, `ADMIN`, and `PROCUREMENT` roles.
+- One review per Purchase Order, integer rating 1–5, optional plain-text comment up to 2000 characters, 24-hour author-edit window, and audit events.
+- Azerbaijani `/reviews` frontend integrated with the dashboard. Delivery records use server pagination (100 per page) rather than unbounded concurrent page requests.
+- Acceptance tests cover eligibility, duplicate prevention, create/read/list/update, audit events, validation, concurrent duplicate submissions, RBAC, edit-window enforcement, batch summary behavior, and tenant isolation.
 
-Acceptance gates for implementation:
+Acceptance evidence:
 
-- Only authenticated, authorized participants meeting the approved transaction/delivery eligibility rule can create a review.
-- Rating range, required fields, text length, duplicate rules, and any edit/withdraw behavior are validated server-side.
-- Company/tenant isolation is enforced for creation, reading, and moderation paths.
-- Review events are audited according to the approved policy.
-- Backend tests cover eligible and ineligible actors, cross-company access, duplicate submission, invalid ratings, and terminal/eligible transaction rules.
-- Frontend is localized in Azerbaijani and provides loading, empty, success, validation-error, and forbidden-action states.
-- Integration acceptance proves the approved buyer/supplier review flow against a delivered/eligible transaction without direct API calls.
-- All four GitHub Actions quality gates pass; `git diff --check` is clean.
+- Local browser acceptance: review created, shown in the list, edited from 5/5 to 4/5, and comment updated; the review remained visible after refreshing.
+- Local browser Network inspection: `POST /api/v1/reviews/summary` returned HTTP 200.
+- Local migration applied to the backend's active `bizaz_procurement_test` database after a validated backup; the `reviews` table and eight constraints were verified.
+- Latest pre-merge CI Run #109 (workflow run `38167889764`): all four quality gates passed; backend regression **221 passed**, 56 dependency deprecation warnings, no failures.
+- Post-merge GitHub Actions Run #111 (`38169190885`) for merge commit `4f7369663802bd49296055694b00bf34a7d8bbc9`: **SUCCESS**, all four quality gates passed; backend regression **221 passed**, 56 warnings, no failures.
+- Codex review of head `0309e80`: “Didn't find any major issues”; the two rate-limit findings were addressed and their review threads resolved.
+
+The review/rating MVP is tenant-scoped. Public/global supplier reputation, review withdrawal, and moderation remain out of scope until supplier identity and product policy are separately designed.
+
+### Next planned slice — 4.23.16 Basic Notifications
+
+Status: Planned; not implemented.
+
+Goal: deliver reliable, tenant-scoped notifications for the existing procurement workflows before beginning the core KPI dashboard.
+
+Before implementation, define event triggers, recipient resolution, read/unread state, retention, duplicate/idempotency behavior, delivery channel (in-app first; external channels require separate approval), and audit/privacy requirements.
+
+Acceptance gates:
+
+- Only authorized users in the relevant company receive workflow notifications.
+- Notification creation is transactionally consistent or safely idempotent with its source event.
+- List, unread count, and mark-as-read APIs enforce tenant boundaries.
+- Frontend shows the notification list, unread count, empty/loading/error states, and mark-as-read actions in Azerbaijani.
+- Tests cover recipient resolution, cross-company isolation, duplicate delivery, unread count, and read-state changes.
+- All four CI quality gates pass; production frontend build and repository hygiene pass.
