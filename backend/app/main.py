@@ -728,6 +728,56 @@ def get_my_company(
 # RBAC ╨▓╨ВтАЭ ROLE CHECK
 # ============================================================
 
+@app.get(
+    "/api/v1/company/members",
+    tags=["company"],
+)
+@limiter.limit("60/minute")
+def list_company_members(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """List active members of the authenticated user's company only."""
+    membership = db.scalar(
+        select(CompanyMember).where(
+            CompanyMember.user_id == current_user.id
+        )
+    )
+
+    if not membership:
+        raise HTTPException(
+            status_code=403,
+            detail="İstifadəçinin şirkət üzvlüyü yoxdur.",
+        )
+
+    rows = db.execute(
+        select(
+            User.id,
+            User.full_name,
+            CompanyMember.role,
+        )
+        .join(CompanyMember, CompanyMember.user_id == User.id)
+        .where(
+            CompanyMember.company_id == membership.company_id,
+            User.is_active.is_(True),
+        )
+        .order_by(User.full_name.asc(), User.email.asc())
+    ).all()
+
+    return {
+        "items": [
+            {
+                "id": str(row.id),
+                "full_name": row.full_name,
+                "role": row.role,
+            }
+            for row in rows
+        ],
+        "total": len(rows),
+    }
+
+
 def require_role(*allowed_roles: str):
     def role_checker(
         current_user: User = Depends(get_current_user),
