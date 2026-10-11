@@ -52,6 +52,15 @@ type SupplierStats = {
   rating_count: number;
 };
 
+type SupplierRatingSummary = SupplierStats & {
+  supplier_id: string;
+};
+
+type ReviewSummaryResponse = {
+  items: Review[];
+  supplier_stats: SupplierRatingSummary[];
+};
+
 type CurrentUserResponse = {
   user: { id: string; is_active: boolean };
   company: { id: string; role: string } | null;
@@ -155,50 +164,55 @@ export default function ReviewsPage() {
       }
       const completed = Array.from(latestDeliveredByOrder.values());
 
-      const supplierIds = Array.from(
-        new Set(completed.map((delivery) => delivery.supplier_id)),
+      const purchaseOrderIds = Array.from(
+        new Set(completed.map((delivery) => delivery.purchase_order_id)),
       );
-      const statsPairs = await Promise.all(
-        supplierIds.map(async (supplierId) => {
-          const data = await apiJson<ReviewList>(
-            `/api/v1/suppliers/${supplierId}/reviews?page=1&limit=1`,
+
+      // Batch lookups to avoid one detail request per delivered order (the old
+      // fan-out could exceed the per-address rate limit for large tenants).
+      const reviewSummaries: ReviewSummaryResponse[] = [];
+      const summaryBatchSize = 10000;
+      for (let offset = 0; offset < purchaseOrderIds.length; offset += summaryBatchSize) {
+        reviewSummaries.push(
+          await apiJson<ReviewSummaryResponse>(
+            "/api/v1/reviews/summary",
             token,
-          );
-          return [
-            supplierId,
             {
-              average_rating: data.average_rating,
-              rating_count: data.rating_count,
-            } satisfies SupplierStats,
-          ] as const;
-        }),
-      );
-      const statsBySupplier = new Map(statsPairs);
-
-      const nextEntries = await Promise.all(
-        completed.map(async (delivery): Promise<ReviewEntry> => {
-          let review: Review | null = null;
-          try {
-            review = await apiJson<Review>(
-              `/api/v1/purchase-orders/${delivery.purchase_order_id}/review`,
-              token,
-            );
-          } catch (loadError) {
-            if ((loadError as ApiError).status !== 404) {
-              throw loadError;
-            }
-          }
-
-          return {
-            delivery,
-            review,
-            stats: statsBySupplier.get(delivery.supplier_id) ?? {
-              average_rating: null,
-              rating_count: 0,
+              method: "POST",
+              body: JSON.stringify({
+                purchase_order_ids: purchaseOrderIds.slice(
+                  offset,
+                  offset + summaryBatchSize,
+                ),
+              }),
             },
-          };
-        }),
-      );
+          ),
+        );
+      }
+
+      const reviewsByOrder = new Map<string, Review>();
+      const statsBySupplier = new Map<string, SupplierStats>();
+
+      for (const summary of reviewSummaries) {
+        for (const review of summary.items) {
+          reviewsByOrder.set(review.purchase_order_id, review);
+        }
+        for (const stats of summary.supplier_stats) {
+          statsBySupplier.set(stats.supplier_id, {
+            average_rating: stats.average_rating,
+            rating_count: stats.rating_count,
+          });
+        }
+      }
+
+      const nextEntries: ReviewEntry[] = completed.map((delivery) => ({
+        delivery,
+        review: reviewsByOrder.get(delivery.purchase_order_id) ?? null,
+        stats: statsBySupplier.get(delivery.supplier_id) ?? {
+          average_rating: null,
+          rating_count: 0,
+        },
+      }));
 
       setEntries(nextEntries);
     } catch (loadError) {
