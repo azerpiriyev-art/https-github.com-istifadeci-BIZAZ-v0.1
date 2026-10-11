@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
 const API_URL = "http://127.0.0.1:8001";
@@ -160,7 +160,7 @@ export default function NotificationsPage() {
     }
   };
 
-  const cardStyle: React.CSSProperties = {
+  const cardStyle: CSSProperties = {
     background: "#fff",
     border: "1px solid #ddd",
     borderRadius: 10,
