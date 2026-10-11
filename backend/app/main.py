@@ -3035,6 +3035,20 @@ def create_supplier_offer(
         )
     )
 
+    if supplier_offer.status == "SUBMITTED":
+        _queue_role_notifications(
+            db,
+            company_id=membership.company_id,
+            roles={"OWNER", "ADMIN", "PROCUREMENT"},
+            event_type="SUPPLIER_OFFER_SUBMITTED",
+            title="Təchizatçı təklifi təqdim edildi",
+            body=f"Təklif {supplier_offer.offer_number} təqdim edildi.",
+            source_entity_type="SUPPLIER_OFFER",
+            source_entity_id=supplier_offer.id,
+            source_event_key=f"supplier-offer-submitted:{supplier_offer.id}",
+            exclude_user_id=current_user.id,
+        )
+
     try:
         db.commit()
         db.refresh(supplier_offer)
@@ -4318,6 +4332,13 @@ def create_approval_request(
         )
     )
 
+    notification_steps = db.scalars(
+        select(ApprovalStep)
+        .where(ApprovalStep.approval_request_id == approval_request.id)
+        .order_by(ApprovalStep.step_order)
+    ).all()
+    _queue_approval_action_notifications(db, approval_request, notification_steps)
+
     try:
         db.commit()
     except IntegrityError:
@@ -4674,6 +4695,20 @@ def decide_approval(
         )
     )
 
+    if approval_request.requested_by != current_user.id:
+        _queue_notifications(
+            db,
+            company_id=membership.company_id,
+            recipient_ids=[approval_request.requested_by],
+            event_type="APPROVAL_DECISION_RECORDED",
+            title="Approval qərarı qeydə alındı",
+            body=f"Təsdiq sorğusu üzrə qərar: {payload.decision}.",
+            source_entity_type="APPROVAL_REQUEST",
+            source_entity_id=approval_request.id,
+            source_event_key=f"approval-decision:{current_step.id}",
+        )
+    _queue_approval_action_notifications(db, approval_request, steps)
+
     try:
         db.commit()
     except Exception:
@@ -4921,6 +4956,19 @@ def update_purchase_request_status(
         )
     )
 
+    if purchase_request.requested_by != current_user.id:
+        _queue_notifications(
+            db,
+            company_id=membership.company_id,
+            recipient_ids=[purchase_request.requested_by],
+            event_type="PURCHASE_REQUEST_STATUS_CHANGED",
+            title="Satınalma sorğusunun statusu dəyişdi",
+            body=f"Satınalma sorğusu {purchase_request.request_number}: {current_status} → {new_status}.",
+            source_entity_type="PURCHASE_REQUEST",
+            source_entity_id=purchase_request.id,
+            source_event_key=f"purchase-request-status:{purchase_request.id}:{current_status}:{new_status}",
+        )
+
     db.commit()
     db.refresh(purchase_request)
 
@@ -5034,6 +5082,19 @@ def update_purchase_order_status(
                 purchase_request.status = "CLOSED"
                 purchase_request.updated_at = datetime.now(timezone.utc)
 
+                if purchase_request.requested_by != current_user.id:
+                    _queue_notifications(
+                        db,
+                        company_id=membership.company_id,
+                        recipient_ids=[purchase_request.requested_by],
+                        event_type="PURCHASE_REQUEST_STATUS_CHANGED",
+                        title="Satınalma sorğusunun statusu dəyişdi",
+                        body=f"Satınalma sorğusu {purchase_request.request_number}: {purchase_request_old_status} → CLOSED.",
+                        source_entity_type="PURCHASE_REQUEST",
+                        source_entity_id=purchase_request.id,
+                        source_event_key=f"purchase-request-status:{purchase_request.id}:{purchase_request_old_status}:CLOSED",
+                    )
+
                 db.add(
                     AuditLog(
                         user_id=current_user.id,
@@ -5059,6 +5120,19 @@ def update_purchase_order_status(
             entity_type="purchase_order",
             entity_id=purchase_order.id,
         )
+    )
+
+    _queue_role_notifications(
+        db,
+        company_id=membership.company_id,
+        roles={"OWNER", "ADMIN", "PROCUREMENT"},
+        event_type="PURCHASE_ORDER_STATUS_CHANGED",
+        title="Purchase Order statusu dəyişdi",
+        body=f"Sifariş {purchase_order.order_number}: {current_status} → {new_status}.",
+        source_entity_type="PURCHASE_ORDER",
+        source_entity_id=purchase_order.id,
+        source_event_key=f"purchase-order-status:{purchase_order.id}:{current_status}:{new_status}",
+        exclude_user_id=current_user.id,
     )
 
     db.commit()
@@ -6248,6 +6322,19 @@ def update_delivery_status(
         )
     )
 
+    _queue_role_notifications(
+        db,
+        company_id=membership.company_id,
+        roles={"OWNER", "ADMIN", "PROCUREMENT"},
+        event_type="DELIVERY_STATUS_CHANGED",
+        title="Çatdırılmanın statusu dəyişdi",
+        body=f"Çatdırılma {delivery.delivery_number}: {current_status} → {new_status}.",
+        source_entity_type="DELIVERY",
+        source_entity_id=delivery.id,
+        source_event_key=f"delivery-status:{delivery.id}:{current_status}:{new_status}",
+        exclude_user_id=current_user.id,
+    )
+
     try:
         db.commit()
         db.refresh(delivery)
@@ -6501,6 +6588,19 @@ def update_payment_status(
                 "currency": payment.currency,
             },
         )
+    )
+
+    _queue_role_notifications(
+        db,
+        company_id=membership.company_id,
+        roles={"OWNER", "ADMIN", "FINANCE", "PROCUREMENT"},
+        event_type="PAYMENT_STATUS_CHANGED",
+        title="Ödənişin statusu dəyişdi",
+        body=f"Ödəniş statusu dəyişdi: {current_status} → {new_status}.",
+        source_entity_type="PAYMENT",
+        source_entity_id=payment.id,
+        source_event_key=f"payment-status:{payment.id}:{current_status}:{new_status}",
+        exclude_user_id=current_user.id,
     )
 
     db.commit()
