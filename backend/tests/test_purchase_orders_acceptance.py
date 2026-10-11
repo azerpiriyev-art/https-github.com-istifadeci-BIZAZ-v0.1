@@ -451,4 +451,3 @@ def test_delivery_items_cannot_be_added_after_terminal_status(
 
     assert item_response.status_code == 409, item_response.text
     assert "Yekun statuslu çatdırılmaya element əlavə edilə bilməz." in item_response.text
-
