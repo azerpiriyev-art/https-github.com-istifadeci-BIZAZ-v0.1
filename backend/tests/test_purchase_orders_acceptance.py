@@ -379,7 +379,7 @@ def test_18_corrupted_purchase_order_unit_falls_back_to_product_unit(
 
 @pytest.mark.parametrize("terminal_status", ["CANCELLED", "DELIVERED"])
 def test_delivery_items_cannot_be_added_after_terminal_status(
-    base_url, acceptance_owner_headers, acceptance_owner_data
+    terminal_status, base_url, acceptance_owner_headers, acceptance_owner_data
 ):
     """The API must reject delivery-item changes after a delivery is finalized."""
     purchase_order = create_po(
