@@ -176,6 +176,26 @@ def test_review_create_duplicate_read_list_edit_and_audit(
     assert listing["average_rating"] is not None
     assert any(item["id"] == created["id"] for item in listing["items"])
 
+    summary_response = requests.post(
+        f"{base_url}/api/v1/reviews/summary",
+        headers=auth_headers,
+        json={"purchase_order_ids": [purchase_order["id"]]},
+        timeout=15,
+    )
+    assert summary_response.status_code == 200, summary_response.text
+    summary = summary_response.json()
+    assert any(item["id"] == created["id"] for item in summary["items"])
+    supplier_summary = next(
+        (
+            item for item in summary["supplier_stats"]
+            if item["supplier_id"] == test_company_data["supplier_id"]
+        ),
+        None,
+    )
+    assert supplier_summary is not None, summary_response.text
+    assert supplier_summary["rating_count"] >= 1
+    assert supplier_summary["average_rating"] is not None
+
     update_response = requests.patch(
         f"{base_url}/api/v1/purchase-orders/{purchase_order['id']}/review",
         headers=auth_headers,
@@ -281,6 +301,16 @@ def test_review_cannot_be_read_from_another_company(
         timeout=15,
     )
     assert supplier_response.status_code == 404, supplier_response.text
+
+    summary_response = requests.post(
+        f"{base_url}/api/v1/reviews/summary",
+        headers=other_company_headers,
+        json={"purchase_order_ids": [purchase_order["id"]]},
+        timeout=15,
+    )
+    assert summary_response.status_code == 200, summary_response.text
+    assert summary_response.json()["items"] == []
+    assert summary_response.json()["supplier_stats"] == []
 
 
 def test_viewer_role_cannot_create_review(
