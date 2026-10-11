@@ -31,6 +31,7 @@ export default function DashboardPage() {
   const [data, setData] = useState<MeResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [unreadNotificationCount, setUnreadNotificationCount] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -93,6 +94,30 @@ export default function DashboardPage() {
         }
 
         setData(result as MeResponse);
+        try {
+          const notificationResponse = await fetch(
+            `${API_URL}/api/v1/notifications/unread-count`,
+            {
+              method: "GET",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                Accept: "application/json",
+              },
+              signal: controller.signal,
+              cache: "no-store",
+            },
+          );
+          if (notificationResponse.ok) {
+            const notificationPayload = (await notificationResponse.json()) as { count?: number };
+            setUnreadNotificationCount(
+              typeof notificationPayload.count === "number"
+                ? Math.max(0, notificationPayload.count)
+                : 0,
+            );
+          }
+        } catch {
+          // Notification count must never make the main dashboard unavailable.
+        }
       } catch (err) {
         // Component artıq aktiv deyilsə, xəta göstərmə
         if (err instanceof DOMException && err.name === "AbortError") {
@@ -395,6 +420,35 @@ export default function DashboardPage() {
               }}
             >
               Çatdırılmalara keç
+            </button>
+          </div>
+
+          <div
+            style={{
+              background: "#ffffff",
+              padding: "25px",
+              borderRadius: "10px",
+              border: "1px solid #ddd",
+            }}
+          >
+            <h3>Bildirişlər</h3>
+            <p>Şirkət üzrə təsdiq və əməliyyat yeniliklərinə baxın.</p>
+            <p style={{ marginTop: "8px", fontWeight: 600 }}>
+              Oxunmamış: {unreadNotificationCount}
+            </p>
+            <button
+              onClick={() => router.push("/notifications")}
+              style={{
+                marginTop: "10px",
+                padding: "10px 18px",
+                background: "#198754",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+              }}
+            >
+              Bildirişlərə keç
             </button>
           </div>
 
