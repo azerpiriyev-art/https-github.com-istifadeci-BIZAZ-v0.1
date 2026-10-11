@@ -18,7 +18,7 @@ from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
-from .models import ApprovalRequest, ApprovalStep, AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Payment, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User, Delivery, DeliveryItem
+from .models import ApprovalRequest, ApprovalStep, AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Payment, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User, Delivery, DeliveryItem, Review
 
 
 # ============================================================
@@ -6836,3 +6836,367 @@ def get_purchase_order(
             for item in items
         ],
     )
+
+
+
+# ============================================================
+# REVIEW & RATINGS — tenant-scoped, transaction-linked reviews
+# ============================================================
+
+class ReviewCreateSchema(BaseModel):
+    rating: int = Field(ge=1, le=5, strict=True)
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class ReviewUpdateSchema(BaseModel):
+    rating: int | None = Field(default=None, ge=1, le=5, strict=True)
+    comment: str | None = Field(default=None, max_length=2000)
+
+
+class ReviewResponseSchema(BaseModel):
+    id: uuid.UUID
+    company_id: uuid.UUID
+    purchase_order_id: uuid.UUID
+    supplier_id: uuid.UUID
+    reviewer_user_id: uuid.UUID
+    rating: int
+    comment: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class ReviewListResponseSchema(BaseModel):
+    items: list[ReviewResponseSchema]
+    total: int
+    page: int
+    limit: int
+    pages: int
+    average_rating: float | None
+    rating_count: int
+
+
+def review_response(review: Review) -> dict:
+    return {
+        "id": review.id,
+        "company_id": review.company_id,
+        "purchase_order_id": review.purchase_order_id,
+        "supplier_id": review.supplier_id,
+        "reviewer_user_id": review.reviewer_user_id,
+        "rating": review.rating,
+        "comment": review.comment,
+        "created_at": review.created_at,
+        "updated_at": review.updated_at,
+    }
+
+
+@app.post(
+    "/api/v1/purchase-orders/{purchase_order_id}/review",
+    response_model=ReviewResponseSchema,
+    status_code=201,
+    tags=["reviews"],
+)
+@limiter.limit("30/minute")
+def create_purchase_order_review(
+    request: Request,
+    purchase_order_id: uuid.UUID,
+    payload: ReviewCreateSchema,
+    current_user: User = Depends(
+        require_role("OWNER", "ADMIN", "PROCUREMENT")
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+
+    purchase_order = db.scalar(
+        select(PurchaseOrder)
+        .where(
+            PurchaseOrder.id == purchase_order_id,
+            PurchaseOrder.company_id == membership.company_id,
+        )
+        .with_for_update()
+    )
+    if purchase_order is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Satınalma sifarişi tapılmadı.",
+        )
+
+    delivered_id = db.scalar(
+        select(Delivery.id)
+        .where(
+            Delivery.purchase_order_id == purchase_order.id,
+            Delivery.company_id == membership.company_id,
+            Delivery.status == "DELIVERED",
+        )
+        .limit(1)
+    )
+    if delivered_id is None:
+        raise HTTPException(
+            status_code=409,
+            detail="Rəy yalnız tam çatdırılmış sifariş üzrə yazıla bilər.",
+        )
+
+    existing = db.scalar(
+        select(Review).where(
+            Review.purchase_order_id == purchase_order.id,
+            Review.company_id == membership.company_id,
+        )
+    )
+    if existing is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Bu sifariş üzrə rəy artıq mövcuddur.",
+        )
+
+    normalized_comment = (
+        payload.comment.strip()
+        if payload.comment and payload.comment.strip()
+        else None
+    )
+    review = Review(
+        company_id=membership.company_id,
+        purchase_order_id=purchase_order.id,
+        supplier_id=purchase_order.supplier_id,
+        reviewer_user_id=current_user.id,
+        rating=payload.rating,
+        comment=normalized_comment,
+    )
+    db.add(review)
+
+    try:
+        db.flush()
+        db.add(
+            AuditLog(
+                user_id=current_user.id,
+                company_id=membership.company_id,
+                action="REVIEW_CREATED",
+                entity_type="review",
+                entity_id=review.id,
+                ip_address=request.client.host if request.client else None,
+                log_metadata={
+                    "purchase_order_id": str(purchase_order.id),
+                    "supplier_id": str(purchase_order.supplier_id),
+                    "rating": review.rating,
+                },
+            )
+        )
+        db.commit()
+        db.refresh(review)
+    except IntegrityError as exc:
+        db.rollback()
+        existing = db.scalar(
+            select(Review).where(
+                Review.purchase_order_id == purchase_order.id,
+                Review.company_id == membership.company_id,
+            )
+        )
+        if existing is not None:
+            raise HTTPException(
+                status_code=409,
+                detail="Bu sifariş üzrə rəy artıq mövcuddur.",
+            ) from exc
+        raise HTTPException(
+            status_code=409,
+            detail="Rəy saxlanıla bilmədi; məlumatlar yenidən yoxlanmalıdır.",
+        ) from exc
+
+    return review_response(review)
+
+
+@app.get(
+    "/api/v1/purchase-orders/{purchase_order_id}/review",
+    response_model=ReviewResponseSchema,
+    tags=["reviews"],
+)
+@limiter.limit("60/minute")
+def get_purchase_order_review(
+    request: Request,
+    purchase_order_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+    purchase_order = db.scalar(
+        select(PurchaseOrder).where(
+            PurchaseOrder.id == purchase_order_id,
+            PurchaseOrder.company_id == membership.company_id,
+        )
+    )
+    if purchase_order is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Satınalma sifarişi tapılmadı.",
+        )
+
+    review = db.scalar(
+        select(Review).where(
+            Review.purchase_order_id == purchase_order.id,
+            Review.company_id == membership.company_id,
+        )
+    )
+    if review is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Bu sifariş üzrə rəy tapılmadı.",
+        )
+    return review_response(review)
+
+
+@app.get(
+    "/api/v1/suppliers/{supplier_id}/reviews",
+    response_model=ReviewListResponseSchema,
+    tags=["reviews"],
+)
+@limiter.limit("60/minute")
+def list_supplier_reviews(
+    request: Request,
+    supplier_id: uuid.UUID,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+    supplier = db.scalar(
+        select(Supplier).where(
+            Supplier.id == supplier_id,
+            Supplier.company_id == membership.company_id,
+        )
+    )
+    if supplier is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Təchizatçı tapılmadı.",
+        )
+
+    criteria = (
+        Review.company_id == membership.company_id,
+        Review.supplier_id == supplier.id,
+    )
+    count_value, average_value = db.execute(
+        select(func.count(Review.id), func.avg(Review.rating)).where(*criteria)
+    ).one()
+    total = int(count_value or 0)
+    average_rating = round(float(average_value), 2) if average_value is not None else None
+    pages = (total + limit - 1) // limit if total else 0
+
+    reviews = db.scalars(
+        select(Review)
+        .where(*criteria)
+        .order_by(Review.created_at.desc(), Review.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    ).all()
+
+    return ReviewListResponseSchema(
+        items=[review_response(review) for review in reviews],
+        total=total,
+        page=page,
+        limit=limit,
+        pages=pages,
+        average_rating=average_rating,
+        rating_count=total,
+    )
+
+
+@app.patch(
+    "/api/v1/purchase-orders/{purchase_order_id}/review",
+    response_model=ReviewResponseSchema,
+    tags=["reviews"],
+)
+@limiter.limit("30/minute")
+def update_purchase_order_review(
+    request: Request,
+    purchase_order_id: uuid.UUID,
+    payload: ReviewUpdateSchema,
+    current_user: User = Depends(
+        require_role("OWNER", "ADMIN", "PROCUREMENT")
+    ),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+    purchase_order = db.scalar(
+        select(PurchaseOrder)
+        .where(
+            PurchaseOrder.id == purchase_order_id,
+            PurchaseOrder.company_id == membership.company_id,
+        )
+        .with_for_update()
+    )
+    if purchase_order is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Satınalma sifarişi tapılmadı.",
+        )
+
+    review = db.scalar(
+        select(Review)
+        .where(
+            Review.purchase_order_id == purchase_order.id,
+            Review.company_id == membership.company_id,
+        )
+        .with_for_update()
+    )
+    if review is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Bu sifariş üzrə rəy tapılmadı.",
+        )
+    if review.reviewer_user_id != current_user.id:
+        raise HTTPException(
+            status_code=403,
+            detail="Yalnız rəyin müəllifi onu redaktə edə bilər.",
+        )
+
+    created_at = review.created_at
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
+    if datetime.now(timezone.utc) - created_at > timedelta(hours=24):
+        raise HTTPException(
+            status_code=409,
+            detail="Rəyi redaktə etmək üçün 24 saatlıq müddət bitib.",
+        )
+
+    changes = {}
+    if payload.rating is not None and payload.rating != review.rating:
+        changes["rating"] = {"old": review.rating, "new": payload.rating}
+        review.rating = payload.rating
+
+    if "comment" in payload.model_fields_set:
+        normalized_comment = (
+            payload.comment.strip()
+            if payload.comment and payload.comment.strip()
+            else None
+        )
+        if normalized_comment != review.comment:
+            changes["comment_changed"] = True
+            review.comment = normalized_comment
+
+    if changes:
+        review.updated_at = datetime.now(timezone.utc)
+        db.add(
+            AuditLog(
+                user_id=current_user.id,
+                company_id=membership.company_id,
+                action="REVIEW_UPDATED",
+                entity_type="review",
+                entity_id=review.id,
+                ip_address=request.client.host if request.client else None,
+                log_metadata={
+                    "purchase_order_id": str(purchase_order.id),
+                    "changes": changes,
+                },
+            )
+        )
+        try:
+            db.commit()
+            db.refresh(review)
+        except IntegrityError as exc:
+            db.rollback()
+            raise HTTPException(
+                status_code=409,
+                detail="Rəy yenilənə bilmədi.",
+            ) from exc
+
+    return review_response(review)
+
