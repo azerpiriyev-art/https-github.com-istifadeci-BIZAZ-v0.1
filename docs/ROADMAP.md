@@ -309,7 +309,7 @@ Acceptance evidence:
 
 ### 4.23.13 — Delivery Frontend Integration
 
-Status: Implemented / CI PASS; manual acceptance and PR review pending.
+Status: Implemented / CI PASS / local browser acceptance passed; PR review pending.
 
 Delivered scope:
 
@@ -328,4 +328,24 @@ Acceptance evidence:
 - Frontend production build: PASS.
 - Repository hygiene: PASS.
 - No database migration changes.
-- Browser/manual acceptance and pull-request review are still required before merge.
+- Local browser acceptance passed on 2026-10-11: delivery creation, item entry, PLANNED → DISPATCHED → IN_TRANSIT → DELIVERED, receiver selection, and `2 ədəd` display. Pull-request review is still required before merge.
+
+
+### 4.23.14 — Purchase Order Unit Corruption Guard
+
+Status: Complete / CI PASS; local backend pull and runtime verification pending.
+
+Delivered scope:
+
+- Confirmed the malformed unit originates in an acceptance-test helper that explicitly passed `"?d?d"`; the API previously persisted the received string. The evidence does not establish a general PostgreSQL UTF-8 failure.
+- Kept valid caller-supplied units unchanged.
+- Added a backend fallback to the associated product's catalogue unit when purchase-order item input contains question-mark corruption or the Unicode replacement character.
+- Covered direct Purchase Order creation, item replacement during Purchase Order update, and procurement offer-selection → Purchase Order creation.
+- Corrected the reusable acceptance helper to use the Unicode-escaped Azerbaijani default and added a regression test for malformed unit input.
+
+Acceptance evidence:
+
+- New regression test: `backend/tests/test_purchase_orders_acceptance.py::test_18_corrupted_purchase_order_unit_falls_back_to_product_unit`.
+- GitHub Actions Run #54 for commit `e6068ca`: **SUCCESS**.
+- Backend syntax and full regression, PostgreSQL migration smoke check, frontend production build, and repository hygiene: all PASS.
+- No database migration and no mutation of the existing delivered local test record.
