@@ -213,3 +213,236 @@ def test_notifications_are_private_to_recipient_and_company(
                 "DELETE FROM notifications WHERE id = %s",
                 (uuid.UUID(notification_id),),
             )
+
+
+
+def test_notification_event_queue_is_idempotent(
+    test_database_url,
+    test_company_data,
+    test_db,
+):
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+
+    from app.main import _queue_notifications
+
+    source_entity_id = uuid.uuid4()
+    source_event_key = f"test-idempotency:{uuid.uuid4()}"
+    engine = create_engine(test_database_url)
+    try:
+        with Session(engine) as db:
+            _queue_notifications(
+                db,
+                company_id=uuid.UUID(test_company_data["company_id"]),
+                recipient_ids=[uuid.UUID(test_company_data["user_id"])],
+                event_type="PURCHASE_ORDER_STATUS_CHANGED",
+                title="Təkrar bildiriş testi",
+                body="Eyni hadisə yalnız bir bildiriş yaratmalıdır.",
+                source_entity_type="PURCHASE_ORDER",
+                source_entity_id=source_entity_id,
+                source_event_key=source_event_key,
+            )
+            _queue_notifications(
+                db,
+                company_id=uuid.UUID(test_company_data["company_id"]),
+                recipient_ids=[uuid.UUID(test_company_data["user_id"])],
+                event_type="PURCHASE_ORDER_STATUS_CHANGED",
+                title="Təkrar bildiriş testi",
+                body="Eyni hadisə yalnız bir bildiriş yaratmalıdır.",
+                source_entity_type="PURCHASE_ORDER",
+                source_entity_id=source_entity_id,
+                source_event_key=source_event_key,
+            )
+            db.commit()
+
+        row = test_db.execute(
+            """
+            SELECT count(*) FROM notifications
+            WHERE company_id = %s AND recipient_user_id = %s
+              AND source_event_key = %s
+            """,
+            (
+                uuid.UUID(test_company_data["company_id"]),
+                uuid.UUID(test_company_data["user_id"]),
+                source_event_key,
+            ),
+        ).fetchone()
+        assert row[0] == 1
+    finally:
+        test_db.execute(
+            "DELETE FROM notifications WHERE source_event_key = %s",
+            (source_event_key,),
+        )
+        engine.dispose()
+
+
+def test_business_events_create_transactional_notifications(
+    base_url,
+    auth_headers,
+    test_company_data,
+    test_db,
+):
+    suffix = uuid.uuid4().hex[:10].upper()
+    recipient_id = uuid.uuid4()
+    recipient_email = f"notification-recipient-{suffix.lower()}@example.invalid"
+    purchase_order_id = None
+    approval_request_id = None
+    company_id = uuid.UUID(test_company_data["company_id"])
+
+    test_db.execute(
+        """
+        INSERT INTO users (id, email, password_hash, full_name, is_active)
+        VALUES (%s, %s, %s, %s, TRUE)
+        """,
+        (
+            recipient_id,
+            recipient_email,
+            "acceptance-test-only-hash",
+            "Notification Acceptance Recipient",
+        ),
+    )
+    test_db.execute(
+        """
+        INSERT INTO company_members (user_id, company_id, role)
+        VALUES (%s, %s, 'PROCUREMENT')
+        """,
+        (recipient_id, company_id),
+    )
+
+    try:
+        po_response = requests.post(
+            f"{base_url}/api/v1/purchase-orders",
+            headers=auth_headers,
+            json={
+                "supplier_id": test_company_data["supplier_id"],
+                "order_number": f"NOTIF-{suffix}",
+                "status": "DRAFT",
+                "currency": "AZN",
+                "items": [
+                    {
+                        "product_id": test_company_data["product_id"],
+                        "quantity": "1",
+                        "unit": "ədəd",
+                        "unit_price": "10",
+                        "vat_rate": "18",
+                    }
+                ],
+            },
+            timeout=15,
+        )
+        assert po_response.status_code == 201, po_response.text
+        purchase_order = po_response.json()
+        purchase_order_id = uuid.UUID(purchase_order["id"])
+
+        status_response = requests.post(
+            f"{base_url}/api/v1/purchase-orders/{purchase_order_id}/status",
+            headers=auth_headers,
+            json={"status": "SUBMITTED"},
+            timeout=15,
+        )
+        assert status_response.status_code == 200, status_response.text
+
+        order_notification = test_db.execute(
+            """
+            SELECT event_type, source_event_key
+            FROM notifications
+            WHERE company_id = %s
+              AND recipient_user_id = %s
+              AND source_entity_id = %s
+            """,
+            (company_id, recipient_id, purchase_order_id),
+        ).fetchall()
+        assert len(order_notification) == 1
+        assert order_notification[0][0] == "PURCHASE_ORDER_STATUS_CHANGED"
+        assert order_notification[0][1] == (
+            f"purchase-order-status:{purchase_order_id}:DRAFT:SUBMITTED"
+        )
+
+        actor_notification_count = test_db.execute(
+            """
+            SELECT count(*) FROM notifications
+            WHERE company_id = %s
+              AND recipient_user_id = %s
+              AND source_entity_id = %s
+              AND event_type = 'PURCHASE_ORDER_STATUS_CHANGED'
+            """,
+            (company_id, uuid.UUID(test_company_data["user_id"]), purchase_order_id),
+        ).fetchone()[0]
+        assert actor_notification_count == 0
+
+        approval_response = requests.post(
+            f"{base_url}/api/v1/approvals/requests",
+            headers=auth_headers,
+            json={
+                "entity_type": "PURCHASE_ORDER",
+                "entity_id": str(purchase_order_id),
+                "execution_mode": "SEQUENTIAL",
+                "decision_mode": "ALL",
+                "priority": "NORMAL",
+                "steps": [
+                    {
+                        "step_order": 1,
+                        "approver_user_id": str(recipient_id),
+                    }
+                ],
+            },
+            timeout=15,
+        )
+        assert approval_response.status_code == 201, approval_response.text
+        approval_request_id = uuid.UUID(approval_response.json()["id"])
+
+        approval_notification_count = test_db.execute(
+            """
+            SELECT count(*) FROM notifications
+            WHERE company_id = %s
+              AND recipient_user_id = %s
+              AND source_entity_id = %s
+              AND event_type = 'APPROVAL_ACTION_REQUIRED'
+            """,
+            (company_id, recipient_id, approval_request_id),
+        ).fetchone()[0]
+        assert approval_notification_count == 1
+
+        # Audit and notification records are committed with their source event.
+        audit_count = test_db.execute(
+            """
+            SELECT count(*) FROM audit_log
+            WHERE company_id = %s
+              AND action = 'PURCHASE_ORDER_STATUS_CHANGED'
+              AND entity_id = %s
+            """,
+            (company_id, purchase_order_id),
+        ).fetchone()[0]
+        assert audit_count == 1
+    finally:
+        if approval_request_id:
+            test_db.execute(
+                "DELETE FROM audit_log WHERE entity_id = %s",
+                (approval_request_id,),
+            )
+            test_db.execute(
+                "DELETE FROM notifications WHERE company_id = %s AND source_entity_id = %s",
+                (company_id, approval_request_id),
+            )
+            test_db.execute(
+                "DELETE FROM approval_requests WHERE id = %s",
+                (approval_request_id,),
+            )
+        if purchase_order_id:
+            test_db.execute(
+                "DELETE FROM audit_log WHERE entity_id = %s",
+                (purchase_order_id,),
+            )
+            test_db.execute(
+                "DELETE FROM notifications WHERE company_id = %s AND source_entity_id = %s",
+                (company_id, purchase_order_id),
+            )
+            test_db.execute(
+                "DELETE FROM purchase_orders WHERE id = %s",
+                (purchase_order_id,),
+            )
+        test_db.execute(
+            "DELETE FROM company_members WHERE user_id = %s AND company_id = %s",
+            (recipient_id, company_id),
+        )
+        test_db.execute("DELETE FROM users WHERE id = %s", (recipient_id,))
