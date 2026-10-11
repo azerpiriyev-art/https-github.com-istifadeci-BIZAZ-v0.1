@@ -3,8 +3,10 @@
 ## Document control
 
 - Current synchronization: 2026-10-11
-- Historical product-development baseline: `25d1bc8` — `test: add true e2e need to payment vertical slice`
-- Current delivery audit checkpoint: `c2c4d97`; PR #1 remains open and unmerged while local runtime review is pending.
+- Historical product-development baseline: `25d1bc8` — `test: add true e2e need to payment vertical slice`.
+- Current delivery integration merge baseline: `0ca7a9b` — PR #1 merged into `master`; the delivery frontend, company-scoped receiver selection, terminal-state guard, purchase-order unit normalization, and uncapped API-reported pagination are included.
+- Post-merge GitHub Actions Run #74 passed all four quality gates on `0ca7a9b`; backend regression: 211 passed, 51 dependency deprecation warnings, no failures.
+- Local Windows checkout was fast-forwarded to `master`; the working tree was clean after synchronization. Local health and full backend regression were verified.
 - Rule: a stage is complete only with recorded acceptance evidence; a planned capability is not represented as delivered.
 
 ## Product roadmap
@@ -76,7 +78,9 @@ Acceptance gates:
 
 ### 4.23.3 — Procurement request to supplier offer
 
-Goal: deliver the missing buyer-to-supplier acquisition flow ahead of additional order features.
+Status: Complete / PASS (backend vertical slice implemented and regression-verified).
+
+Goal: deliver the buyer-to-supplier acquisition flow ahead of additional order features.
 
 Acceptance gates:
 
@@ -87,6 +91,8 @@ Acceptance gates:
 - An integration test proves: buyer request → supplier offer → comparison → selection → purchase-order creation.
 
 ### 4.23.4 — Frontend integration for the delivered vertical slice
+
+Status: Complete / PASS (frontend flow implemented, production build passed, and integration acceptance recorded in the current baseline).
 
 Acceptance gates:
 
@@ -310,7 +316,7 @@ Acceptance evidence:
 
 ### 4.23.13 — Delivery Frontend Integration
 
-Status: Implemented / CI PASS / local browser acceptance passed; PR review pending.
+Status: Complete / PASS — merged to `master` in PR #1 on 2026-10-11 (`0ca7a9b2b3d86a69a38c5ffefc007f739184b4e3`).
 
 Delivered scope:
 
@@ -324,19 +330,22 @@ Delivered scope:
 
 Acceptance evidence:
 
-- GitHub Actions Run #65 for commit `c2c4d97`: **SUCCESS**; all four quality gates passed.
+- GitHub Actions Run #74 for merge commit `0ca7a9b`: **SUCCESS**; all four quality gates passed. PR validation Run #73 attempt 2 also passed all four jobs.
 - Backend syntax and full regression: **211 passed**, 51 dependency deprecation warnings and no failures.
+- Local Windows regression: **211 passed**, 51 dependency deprecation warnings, no failures; local `/health` returned `status=ok` after starting the normal server.
 - Terminal-state item-add regression covers `CANCELLED` and `DELIVERED`.
 - Frontend security audit: PASS.
 - Frontend production build: PASS.
 - Repository hygiene: PASS.
 - No database migration changes.
-- Local browser acceptance passed on 2026-10-11: delivery creation, item entry, PLANNED → DISPATCHED → IN_TRANSIT → DELIVERED, receiver selection, and `2 ədəd` display. Pull-request review is still required before merge.
+- Local browser acceptance passed on 2026-10-11: delivery creation, item entry, PLANNED → DISPATCHED → IN_TRANSIT → DELIVERED, receiver selection, and `2 ədəd` display.
+- Pagination review finding was fixed in commit `853b56d`: `loadAllPages` no longer silently stops at 100 pages.
+- PR #1 was merged into `master`; merge commit `0ca7a9b2b3d86a69a38c5ffefc007f739184b4e3`.
 
 
 ### 4.23.14 — Purchase Order Unit Corruption Guard
 
-Status: Complete / CI PASS; local unit-normalization helper verified; latest terminal-guard runtime check pending.
+Status: Complete / PASS — normalization helper and terminal-state regression were verified locally; merge CI passed.
 
 Delivered scope:
 
@@ -352,4 +361,26 @@ Acceptance evidence:
 - GitHub Actions Run #54 for commit `e6068ca`: **SUCCESS**.
 - Backend syntax and full regression, PostgreSQL migration smoke check, frontend production build, and repository hygiene: all PASS.
 - No database migration and no mutation of the existing delivered local test record.
-- Unit-normalization cases passed locally after the backend restart at the prior local checkpoint. The `c2c4d97` terminal-guard commit still needs to be pulled to the Windows checkout; no local write-request smoke test was run to avoid creating persistent acceptance data.
+- Local helper check passed: corrupted `?d?d` normalizes to the product catalogue unit `ədəd`.
+- The terminal-state targeted regression passed locally: **2/2** for `CANCELLED` and `DELIVERED`; the full backend regression passed **211/211**.
+- Post-merge GitHub Actions Run #74 and PR validation Run #73 attempt 2 passed all four quality gates.
+
+
+## 4.23.15 — Reviews & Ratings (next MVP vertical slice)
+
+Status: Planned; not yet implemented.
+
+Rationale: the delivery slice is now merged and verified. The MVP scope identifies Review/Rating, basic notifications, and the core KPI dashboard as remaining must-have capabilities. Reviews are the next slice in the recorded MVP sequence, followed by notifications and KPI.
+
+Before schema or API changes, the product contract must explicitly settle which subject is reviewable (supplier/company, product/service, or completed transaction), who can review whom, eligibility after delivery, duplicate-review rules, edit/withdraw policy, moderation, and audit requirements. These are not fully specified by the current MVP scope and must not be silently assumed.
+
+Acceptance gates for implementation:
+
+- Only authenticated, authorized participants meeting the approved transaction/delivery eligibility rule can create a review.
+- Rating range, required fields, text length, duplicate rules, and any edit/withdraw behavior are validated server-side.
+- Company/tenant isolation is enforced for creation, reading, and moderation paths.
+- Review events are audited according to the approved policy.
+- Backend tests cover eligible and ineligible actors, cross-company access, duplicate submission, invalid ratings, and terminal/eligible transaction rules.
+- Frontend is localized in Azerbaijani and provides loading, empty, success, validation-error, and forbidden-action states.
+- Integration acceptance proves the approved buyer/supplier review flow against a delivered/eligible transaction without direct API calls.
+- All four GitHub Actions quality gates pass; `git diff --check` is clean.
