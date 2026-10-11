@@ -18,7 +18,7 @@ Mövcud BIZAZ satınalma, Approval, Purchase Order, Delivery və Payment axınla
 3. **İstifadəçi:** yalnız aktiv istifadəçi və cari şirkətin aktiv membership-i.
 4. **Oxunma vəziyyəti:** `read_at IS NULL` oxunmamış deməkdir; mark-as-read təkrarlansa da təhlükəsiz və idempotent olmalıdır.
 5. **Dil və payload:** başlıq və mətn Azərbaycan dilində, plain text; mətn HTML kimi render edilmir. Bildiriş mesajına məxfi qeydlər, token, credential və lazımsız maliyyə detalları daxil edilmir.
-6. **Saxlanma:** təklif olunan müddət 180 gündür; bu qərar Product Owner tərəfindən təsdiqlənməli, implementasiyada gündəlik təmizləmə işi və onun əməliyyat sahibi də müəyyən edilməlidir.
+6. **Saxlanma:** bildirişlər 180 gün saxlanılır; gündəlik təmizləmə edilir. Əməliyyat sahibi: BIZAZ sistem administratoru.
 7. **Silinmə:** istifadəçi inbox-dan bildiriş silə bilməz; 180 günlük retention mexanizmi və şirkət/üzvlük silinməsi ayrıca idarə olunur. “Hamısını oxunmuş et” MVP-yə daxil deyil.
 
 ## 3. Hadisələr və alıcıların müəyyənləşdirilməsi
@@ -72,7 +72,7 @@ Constraints and indexes:
 - Bildiriş yaratma mənbə domain hadisəsi və həmin hadisənin audit yazısı ilə eyni verilənlər bazası transaction-ında icra olunur.
 - `source_event_key` mənbə event-in sabit identifikatorudur (məsələn audit-event ID-si və ya yaradılmış approval-step ID-si + action növü); retry eyni event üçün əlavə inbox sətirləri yaratmır.
 - `ON CONFLICT DO NOTHING` və ya ekvivalent unikal məhdudiyyət davranışı duplicate delivery-ni bloklayır.
-- Notification insert-i uğursuz olarsa, əməliyyatın transaction strategiyası qismən vəziyyət yaratmamalıdır; implementasiya source state, audit və bildirişi birlikdə commit/rollback edir.
+- Notification insert-i uğursuz olarsa, mənbə business əməliyyatı rollback edilir. Mənbə state, audit və bildiriş eyni DB transaction-da commit/rollback edilir.
 - Bildirişin oxunması business entity statusunu dəyişmir.
 
 ## 6. API müqaviləsi
