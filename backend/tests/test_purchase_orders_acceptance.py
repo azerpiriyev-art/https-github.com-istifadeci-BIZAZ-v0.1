@@ -375,3 +375,68 @@ def test_18_corrupted_purchase_order_unit_falls_back_to_product_unit(
     )
 
     assert data["items"][0]["unit"] == "ədəd"
+
+
+@pytest.mark.parametrize("terminal_status", ["CANCELLED", "DELIVERED"])
+def test_delivery_items_cannot_be_added_after_terminal_status(
+    base_url, acceptance_owner_headers, acceptance_owner_data
+):
+    """The API must reject delivery-item changes after a delivery is finalized."""
+    purchase_order = create_po(
+        base_url,
+        acceptance_owner_headers,
+        acceptance_owner_data,
+        prefix="PO-DELIVERY-TERMINAL",
+    )
+    purchase_order_id = purchase_order["id"]
+
+    assert change_status(
+        base_url, acceptance_owner_headers, purchase_order_id, "SUBMITTED"
+    ).status_code == 200
+    assert change_status(
+        base_url, acceptance_owner_headers, purchase_order_id, "APPROVED"
+    ).status_code == 200
+
+    delivery_response = requests.post(
+        f"{base_url}/api/v1/deliveries",
+        headers=acceptance_owner_headers,
+        json={
+            "purchase_order_id": purchase_order_id,
+            "delivery_number": f"DEL-TERMINAL-{uuid.uuid4().hex[:8].upper()}",
+            "notes": "Terminal delivery item guard regression test",
+        },
+        timeout=10,
+    )
+    assert delivery_response.status_code == 201, delivery_response.text
+    delivery_id = delivery_response.json()["id"]
+
+    transitions = (
+        ["CANCELLED"]
+        if terminal_status == "CANCELLED"
+        else ["DISPATCHED", "IN_TRANSIT", "DELIVERED"]
+    )
+    for status in transitions:
+        payload = {"status": status}
+        if status == "DELIVERED":
+            payload["received_by"] = acceptance_owner_data["user_id"]
+        response = requests.post(
+            f"{base_url}/api/v1/deliveries/{delivery_id}/status",
+            headers=acceptance_owner_headers,
+            json=payload,
+            timeout=10,
+        )
+        assert response.status_code == 200, response.text
+
+    item_response = requests.post(
+        f"{base_url}/api/v1/deliveries/{delivery_id}/items",
+        headers=acceptance_owner_headers,
+        json={
+            "purchase_order_item_id": purchase_order["items"][0]["id"],
+            "quantity_delivered": 1,
+        },
+        timeout=10,
+    )
+
+    assert item_response.status_code == 409, item_response.text
+    assert "Yekun statuslu çatdırılmaya element əlavə edilə bilməz." in item_response.text
+
