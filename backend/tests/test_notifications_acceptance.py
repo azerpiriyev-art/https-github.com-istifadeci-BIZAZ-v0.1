@@ -227,7 +227,7 @@ def test_notification_event_queue_is_idempotent(
 
     source_entity_id = uuid.uuid4()
     source_event_key = f"test-idempotency:{uuid.uuid4()}"
-    engine = create_engine(test_database_url)
+    engine = create_engine(test_database_url.replace("postgresql://", "postgresql+psycopg://", 1))
     try:
         with Session(engine) as db:
             _queue_notifications(
