@@ -436,6 +436,19 @@ export default function DeliveriesPage() {
     return product ? product.name + (product.sku ? " (" + product.sku + ")" : "") : productId;
   }
 
+  function purchaseOrderItemUnit(item: PurchaseOrderItem): string {
+    const storedUnit = String(item.unit || "").trim();
+    const unitIsCorrupted =
+      !storedUnit || storedUnit.includes("?") || storedUnit.includes("\uFFFD");
+
+    if (!unitIsCorrupted) return storedUnit;
+
+    // Keep valid historical PO-line units, but use catalog unit as a safe display fallback
+    // when old/test data contains replacement characters or question-mark corruption.
+    const catalogUnit = productById.get(item.product_id)?.unit?.trim();
+    return catalogUnit || storedUnit;
+  }
+
   async function handleAddItem(event: FormEvent<HTMLFormElement>, delivery: Delivery) {
     event.preventDefault();
     setError("");
@@ -831,7 +844,7 @@ export default function DeliveriesPage() {
                               return (
                                 <tr key={item.id}>
                                   <td style={{ padding: "10px", borderBottom: "1px solid #edf0f4" }}>{poItem ? productLabel(poItem.product_id) : item.purchase_order_item_id}</td>
-                                  <td style={{ padding: "10px", borderBottom: "1px solid #edf0f4", whiteSpace: "nowrap" }}>{asNumber(item.quantity_delivered).toLocaleString("az-AZ")} {poItem?.unit || ""}</td>
+                                  <td style={{ padding: "10px", borderBottom: "1px solid #edf0f4", whiteSpace: "nowrap" }}>{asNumber(item.quantity_delivered).toLocaleString("az-AZ")} {poItem ? purchaseOrderItemUnit(poItem) : ""}</td>
                                   <td style={{ padding: "10px", borderBottom: "1px solid #edf0f4" }}>{item.notes || "—"}</td>
                                 </tr>
                               );
@@ -861,7 +874,7 @@ export default function DeliveriesPage() {
                                   <option value="">Məhsul seçin</option>
                                   {options.map((item) => (
                                     <option key={item.id} value={item.id}>
-                                      {productLabel(item.product_id)} · qalıq {remainingQuantity(item).toLocaleString("az-AZ")} {item.unit}
+                                      {productLabel(item.product_id)} · qalıq {remainingQuantity(item).toLocaleString("az-AZ")} {purchaseOrderItemUnit(item)}
                                     </option>
                                   ))}
                                 </select>
