@@ -395,11 +395,11 @@ The review/rating MVP is tenant-scoped. Public/global supplier reputation, revie
 
 ### Next planned slice — 4.23.16 Basic Notifications
 
-Status: Planned; not implemented.
+Status: **Implementation in progress** on `feature/basic-notifications`; Product Owner approved the MVP policy decisions on 2026-10-11.
 
-Goal: deliver reliable, tenant-scoped notifications for the existing procurement workflows before beginning the core KPI dashboard.
+Goal: deliver reliable, tenant-scoped notifications for existing procurement workflows before beginning the core KPI dashboard.
 
-Before implementation, define event triggers, recipient resolution, read/unread state, retention, duplicate/idempotency behavior, delivery channel (in-app first; external channels require separate approval), and audit/privacy requirements.
+Accepted contract: `docs/BASIC-NOTIFICATIONS-SPEC.md`. Scope is in-app-only, tenant-scoped recipient resolution, actionable Approval notifications, request/offer/order/delivery/payment status notifications, inbox/unread-count/mark-as-read APIs, idempotent creation, and 180-day retention with daily purge owned by the BIZAZ system administrator. External supplier-user notifications remain out of scope until canonical supplier identity exists.
 
 Acceptance gates:
 
