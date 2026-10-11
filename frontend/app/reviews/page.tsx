@@ -201,14 +201,6 @@ export default function ReviewsPage() {
       );
 
       setEntries(nextEntries);
-      if (
-        selectedPurchaseOrder &&
-        !nextEntries.some(
-          (entry) => entry.delivery.purchase_order_id === selectedPurchaseOrder,
-        )
-      ) {
-        setSelectedPurchaseOrder("");
-      }
     } catch (loadError) {
       const apiError = loadError as ApiError;
       if (apiError.status === 401) {
@@ -220,11 +212,23 @@ export default function ReviewsPage() {
     } finally {
       setLoading(false);
     }
-  }, [router, selectedPurchaseOrder]);
+  }, [router]);
 
   useEffect(() => {
     void loadData();
   }, [loadData]);
+
+  useEffect(() => {
+    if (
+      !loading &&
+      selectedPurchaseOrder &&
+      !entries.some(
+        (entry) => entry.delivery.purchase_order_id === selectedPurchaseOrder,
+      )
+    ) {
+      setSelectedPurchaseOrder("");
+    }
+  }, [entries, loading, selectedPurchaseOrder]);
 
   const pendingEntries = useMemo(
     () => entries.filter((entry) => entry.review === null),
