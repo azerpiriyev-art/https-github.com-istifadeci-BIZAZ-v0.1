@@ -2,12 +2,12 @@
 
 ## Current baseline
 
-- Current delivery-integration merge baseline: `0ca7a9b2b3d86a69a38c5ffefc007f739184b4e3` (PR #1 merged to `master`; feature head `853b56d`).
-- Local Windows checkout was fast-forwarded to `origin/master`; the working tree was clean after synchronization.
-- Local API health returned `status=ok`, `service=bizaz-api`, `version=0.1.0` after restarting the normal server with the local `.env` configuration.
-- Local backend full regression: **211 passed**, 51 dependency deprecation warnings, no failures (25.66s).
-- Post-merge GitHub Actions Run #74 for `0ca7a9b`: **SUCCESS**, all four quality gates passed; CI backend regression: 211 passed, 51 warnings.
-- Docker/PostgreSQL and Windows scheduled-task production status were not re-verified from this sandbox. Their last approved operating result is recorded in the runbooks; live checks are required before production work.
+- Current `master` merge baseline: `4f7369663802bd49296055694b00bf34a7d8bbc9` (PR #2 merged; Review & Ratings included). Prior delivery-integration baseline remains PR #1 merge `0ca7a9b2b3d86a69a38c5ffefc007f739184b4e3`.
+- Local Windows checkout was fast-forwarded to `origin/master`; the working tree is clean after synchronization.
+- Local backend health returned `status=ok`, and OpenAPI exposed `POST /api/v1/reviews/summary` after the latest feature code was pulled and the backend restarted.
+- Local browser acceptance on the merged feature head: review creation and listing passed; rating edited from 5/5 to 4/5 and comment changed; the batch summary request returned HTTP 200.
+- Post-merge GitHub Actions Run #111 (`38169190885`) for `4f7369663802bd49296055694b00bf34a7d8bbc9`: **SUCCESS**, all four quality gates passed; backend regression **221 passed**, 56 dependency deprecation warnings, no failures.
+- Docker/PostgreSQL and Windows scheduled-task production status were not re-verified from this sandbox. Live checks remain required before any production change.
 
 | MODUL | STATUS | CONFIRMED EVIDENCE | NEXT STEP |
 |---|---|---|---|
@@ -22,7 +22,9 @@
 | Purchase Requests / Supplier Offers / Comparison | 🟢 Implemented | Buyer purchase-request lifecycle, supplier offers, offer comparison, explicit supplier selection, purchase-order creation, authorization/company isolation, audit coverage, and expired-offer validation are implemented and covered by the procurement test suite. | 4.23.4 — frontend integration. |
 | Payments | 🟢 Implemented | Payment Engine is implemented with payment creation/status APIs, RBAC, controlled state transitions, duplicate-reference protection, payment limits, audit logging, and approval integration; payment acceptance coverage is verified. | Maintain payment controls and acceptance coverage. |
 | Delivery | **Implemented / merged / PASS** | `/deliveries` frontend, dashboard navigation, company-scoped active-member API, explicit API guard for DELIVERED/CANCELLED item writes, corrupted-unit fallback, and full API-reported pagination are in `master`. Browser acceptance and local/backend CI regressions passed; no migration was added. | Maintain delivery state, tenant, and quantity regression gates. |
-| Reviews / Notifications / KPI | Not implemented; next MVP slices | No completed implementation evidence in this baseline. MVP order is reviews/rating, then basic notifications, then core KPI dashboard. | 4.23.15 — settle Review/Rating contract, then implement and test. |
+| Reviews / Ratings | **Implemented / merged / PASS** | PR #2 merged to `master` at `4f73696`; local browser create/list/edit acceptance passed; batch summary returned HTTP 200; post-merge CI Run #111 passed all four gates with 221 backend tests. | Maintain tenant isolation, audit, and rate-limit regression gates. |
+| Notifications | Planned | Not implemented in the current baseline. | 4.23.16 — define notification contract and implement in-app MVP. |
+| KPI Dashboard | Planned | Not implemented in the current baseline. | Start after the Basic Notifications slice, per MVP sequence. |
 | Automated Testing / CI | **PASS** | GitHub Actions Run #74 for merge commit `0ca7a9b`: **211 backend tests passed**, PostgreSQL migration smoke check, frontend production build/security audit, and repository hygiene all passed. | Maintain all four gates on every change. |
 | Production Operations & Governance (4.18–4.22.9) | рџџў PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
 
@@ -352,19 +354,16 @@ Acceptance evidence:
 - Post-merge GitHub Actions Run #74 passed all four quality gates.
 
 
-## Next planned slice — 4.23.15 Reviews & Ratings
+## 4.23.15 — Reviews & Ratings
 
-Status: Implemented on `feature/review-ratings`; not merged to `master`.
+**Status: Complete / PASS — merged to `master` in PR #2.**
 
-Technical contract: `docs/REVIEW-RATINGS-SPEC.md`. Current slice includes additive PostgreSQL migration, ORM model, tenant-scoped Review APIs, audit and RBAC, the 24-hour author edit rule, `/reviews` frontend, acceptance tests and migration-smoke schema assertions. CI must be rerun against the latest branch head before merge consideration.
+- Merge commit: `4f7369663802bd49296055694b00bf34a7d8bbc9`.
+- Tenant-scoped migration/model/APIs, batch summary endpoint, Azerbaijani frontend, role enforcement, audit, duplicate protection, and 24-hour author edit are in `master`.
+- Local browser acceptance: create, list, change rating to 4/5, edit comment, and retain the review after refresh.
+- Latest post-merge CI Run #111: all four gates passed; backend regression **221 passed**, 56 dependency deprecation warnings, no failures.
+- Codex review of the latest feature head found no major issues; both rate-limit findings were addressed and resolved.
 
-The MVP scope lists Review/Rating as a must-have. Before database or API implementation, define the reviewable subject, eligible reviewer/recipient relationship, linkage to a completed delivery/transaction, duplicate and edit/withdraw rules, moderation policy, and audit requirements. Current MVP scope does not specify those policy details.
+## Next planned slice — 4.23.16 Basic Notifications
 
-Implementation acceptance gates:
-- Server-side rating/text validation and duplicate prevention.
-- Authorization and company isolation for review creation and reading.
-- Approved eligibility rule enforced against delivery/transaction state.
-- Audit events defined and tested.
-- Backend regression for eligible/ineligible reviewer, cross-company access, duplicate submission, and invalid rating.
-- Azerbaijani frontend with loading/empty/error/success states.
-- Integration acceptance of the approved review flow plus all four CI quality gates.
+Status: Planned; not implemented. Define event triggers and tenant-scoped recipients, in-app delivery, unread state, read actions, idempotency, retention, and audit/privacy rules before implementation. KPI Dashboard follows the notification slice.
