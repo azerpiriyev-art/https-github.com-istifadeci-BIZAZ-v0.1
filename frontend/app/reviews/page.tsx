@@ -204,9 +204,7 @@ export default function ReviewsPage() {
       if (
         selectedPurchaseOrder &&
         !nextEntries.some(
-          (entry) =>
-            entry.delivery.purchase_order_id === selectedPurchaseOrder &&
-            entry.review === null,
+          (entry) => entry.delivery.purchase_order_id === selectedPurchaseOrder,
         )
       ) {
         setSelectedPurchaseOrder("");
