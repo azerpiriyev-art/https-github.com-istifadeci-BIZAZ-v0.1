@@ -228,3 +228,75 @@ def test_review_rejects_comment_over_2000_characters(
         timeout=15,
     )
     assert response.status_code == 422, response.text
+
+
+
+def test_review_cannot_be_read_from_another_company(
+    base_url,
+    auth_headers,
+    test_company_data,
+    acceptance_owner_credentials,
+):
+    purchase_order = _create_approved_purchase_order(
+        base_url,
+        auth_headers,
+        test_company_data,
+    )
+    _complete_delivery(
+        base_url,
+        auth_headers,
+        test_company_data,
+        purchase_order,
+    )
+    created = requests.post(
+        f"{base_url}/api/v1/purchase-orders/{purchase_order['id']}/review",
+        headers=auth_headers,
+        json={"rating": 4},
+        timeout=15,
+    )
+    assert created.status_code == 201, created.text
+
+    login = requests.post(
+        f"{base_url}/api/v1/login",
+        json=acceptance_owner_credentials,
+        timeout=15,
+    )
+    assert login.status_code == 200, login.text
+    other_company_headers = {
+        "Authorization": f"Bearer {login.json()['token']}",
+    }
+
+    review_response = requests.get(
+        f"{base_url}/api/v1/purchase-orders/{purchase_order['id']}/review",
+        headers=other_company_headers,
+        timeout=15,
+    )
+    assert review_response.status_code == 404, review_response.text
+
+    supplier_response = requests.get(
+        f"{base_url}/api/v1/suppliers/{test_company_data['supplier_id']}/reviews",
+        headers=other_company_headers,
+        timeout=15,
+    )
+    assert supplier_response.status_code == 404, supplier_response.text
+
+
+def test_viewer_role_cannot_create_review(
+    base_url,
+    acceptance_viewer_credentials,
+):
+    login = requests.post(
+        f"{base_url}/api/v1/login",
+        json=acceptance_viewer_credentials,
+        timeout=15,
+    )
+    assert login.status_code == 200, login.text
+    headers = {"Authorization": f"Bearer {login.json()['token']}"}
+
+    response = requests.post(
+        f"{base_url}/api/v1/purchase-orders/{uuid.uuid4()}/review",
+        headers=headers,
+        json={"rating": 5},
+        timeout=15,
+    )
+    assert response.status_code == 403, response.text
