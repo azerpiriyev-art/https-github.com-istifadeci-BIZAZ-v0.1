@@ -3421,6 +3421,17 @@ PurchaseOrderResponseSchema.model_rebuild()
 PurchaseOrderListResponseSchema.model_rebuild()
 
 
+def normalize_purchase_order_item_unit(
+    incoming_unit: str | None,
+    product_unit: str | None,
+) -> str:
+    """Use the product's canonical unit if an incoming value is visibly corrupted."""
+    value = str(incoming_unit or "").strip()
+    if value and "?" not in value and "\ufffd" not in value:
+        return value
+
+    canonical = str(product_unit or "").strip()
+    return canonical or "\u0259d\u0259d"
 
 
 # ============================================================
@@ -5077,6 +5088,17 @@ def create_purchase_order_from_selection(
                 detail="Supplier offer quantity cannot exceed purchase request quantity",
             )
 
+    offer_product_ids = {item.product_id for item in offer_items}
+    offer_product_units = {
+        product.id: product.unit
+        for product in db.scalars(
+            select(Product).where(
+                Product.id.in_(offer_product_ids),
+                Product.company_id == membership.company_id,
+            )
+        ).all()
+    }
+
     existing_order = db.scalar(
         select(PurchaseOrder).where(
             PurchaseOrder.company_id == membership.company_id,
@@ -5137,7 +5159,10 @@ def create_purchase_order_from_selection(
                     purchase_order_id=purchase_order.id,
                     product_id=offer_item.product_id,
                     quantity=offer_item.quantity,
-                    unit=offer_item.unit,
+                    unit=normalize_purchase_order_item_unit(
+                        offer_item.unit,
+                        offer_product_units.get(offer_item.product_id),
+                    ),
                     unit_price=offer_item.unit_price,
                     vat_rate=offer_item.vat_rate,
                     vat_amount=line_vat,
@@ -5373,7 +5398,10 @@ def create_purchase_order(
             purchase_order_id=purchase_order.id,
             product_id=item_data.product_id,
             quantity=item_data.quantity,
-            unit=item_data.unit,
+            unit=normalize_purchase_order_item_unit(
+                item_data.unit,
+                product_map[item_data.product_id].unit,
+            ),
             unit_price=item_data.unit_price,
             vat_rate=item_data.vat_rate,
             vat_amount=line_vat,
@@ -6543,7 +6571,10 @@ def update_purchase_order(
                 purchase_order_id=purchase_order.id,
                 product_id=item_payload.product_id,
                 quantity=item_payload.quantity,
-                unit=item_payload.unit,
+                unit=normalize_purchase_order_item_unit(
+                    item_payload.unit,
+                    product.unit,
+                ),
                 unit_price=item_payload.unit_price,
                 vat_rate=item_payload.vat_rate,
                 vat_amount=item_vat,
