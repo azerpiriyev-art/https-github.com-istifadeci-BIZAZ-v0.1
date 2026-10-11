@@ -372,6 +372,31 @@ export default function DashboardPage() {
               Tələbat yarat
             </button>
           </div>
+          <div
+            style={{
+              background: "#ffffff",
+              padding: "25px",
+              borderRadius: "10px",
+              border: "1px solid #ddd",
+            }}
+          >
+            <h3>Çatdırılmalar</h3>
+            <p>Satınalma sifarişlərinin çatdırılmasını və təhvil statuslarını idarə edin.</p>
+            <button
+              onClick={() => router.push("/deliveries")}
+              style={{
+                marginTop: "10px",
+                padding: "10px 18px",
+                background: "#198754",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+              }}
+            >
+              Çatdırılmalara keç
+            </button>
+          </div>
 
         </div>
       </section>

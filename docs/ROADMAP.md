@@ -2,8 +2,9 @@
 
 ## Document control
 
-- Current synchronization: 2026-10-03
-- Confirmed version-control baseline: `25d1bc8` — `test: add true e2e need to payment vertical slice`
+- Current synchronization: 2026-10-11
+- Historical product-development baseline: `25d1bc8` — `test: add true e2e need to payment vertical slice`
+- Current delivery audit checkpoint: `c2c4d97`; PR #1 remains open and unmerged while local runtime review is pending.
 - Rule: a stage is complete only with recorded acceptance evidence; a planned capability is not represented as delivered.
 
 ## Product roadmap
@@ -305,3 +306,50 @@ Acceptance evidence:
 - GitHub Actions Run #28 for commit `25d1bc8`: **SUCCESS**.
 - All four CI jobs passed.
 - No production application code was changed by this slice; the delivered change is the E2E acceptance test.
+
+
+### 4.23.13 — Delivery Frontend Integration
+
+Status: Implemented / CI PASS / local browser acceptance passed; PR review pending.
+
+Delivered scope:
+
+- Delivery registry UI at `/deliveries` and dashboard navigation.
+- Delivery creation from `APPROVED` purchase orders only.
+- Delivery-item entry with quantity/remaining-quantity validation hints.
+- Status updates limited in the UI to the backend's existing transition contract.
+- Company-scoped list of active members for the required `received_by` field.
+- API-level guard returns HTTP 409 when attempting to add an item to a `DELIVERED` or `CANCELLED` delivery; regression coverage tests both cases. The database trigger already enforces the underlying terminal-state quantity invariant.
+- Regression test for the member endpoint's company scope and active-user filter.
+
+Acceptance evidence:
+
+- GitHub Actions Run #65 for commit `c2c4d97`: **SUCCESS**; all four quality gates passed.
+- Backend syntax and full regression: **211 passed**, 51 dependency deprecation warnings and no failures.
+- Terminal-state item-add regression covers `CANCELLED` and `DELIVERED`.
+- Frontend security audit: PASS.
+- Frontend production build: PASS.
+- Repository hygiene: PASS.
+- No database migration changes.
+- Local browser acceptance passed on 2026-10-11: delivery creation, item entry, PLANNED → DISPATCHED → IN_TRANSIT → DELIVERED, receiver selection, and `2 ədəd` display. Pull-request review is still required before merge.
+
+
+### 4.23.14 — Purchase Order Unit Corruption Guard
+
+Status: Complete / CI PASS; local unit-normalization helper verified; latest terminal-guard runtime check pending.
+
+Delivered scope:
+
+- Confirmed the malformed unit originates in an acceptance-test helper that explicitly passed `"?d?d"`; the API previously persisted the received string. The evidence does not establish a general PostgreSQL UTF-8 failure.
+- Kept valid caller-supplied units unchanged.
+- Added a backend fallback to the associated product's catalogue unit when purchase-order item input contains question-mark corruption or the Unicode replacement character.
+- Covered direct Purchase Order creation, item replacement during Purchase Order update, and procurement offer-selection → Purchase Order creation.
+- Corrected the reusable acceptance helper to use the Unicode-escaped Azerbaijani default and added a regression test for malformed unit input.
+
+Acceptance evidence:
+
+- New regression test: `backend/tests/test_purchase_orders_acceptance.py::test_18_corrupted_purchase_order_unit_falls_back_to_product_unit`.
+- GitHub Actions Run #54 for commit `e6068ca`: **SUCCESS**.
+- Backend syntax and full regression, PostgreSQL migration smoke check, frontend production build, and repository hygiene: all PASS.
+- No database migration and no mutation of the existing delivered local test record.
+- Unit-normalization cases passed locally after the backend restart at the prior local checkpoint. The `c2c4d97` terminal-guard commit still needs to be pulled to the Windows checkout; no local write-request smoke test was run to avoid creating persistent acceptance data.

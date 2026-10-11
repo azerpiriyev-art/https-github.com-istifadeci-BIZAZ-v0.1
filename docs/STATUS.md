@@ -1,8 +1,8 @@
-# BIZAZ Status — 2026-10-03
+# BIZAZ Status — 2026-10-11
 
 ## Current baseline
 
-- Git baseline: `25d1bc8` — `test: add true e2e need to payment vertical slice`
+- Current integration checkpoint: `c2c4d97` (delivery frontend, purchase-order unit normalization, and terminal-delivery-item API guard; PR #1 is open for review and has not been merged).
 - Repository status at synchronization start: clean.
 - API health verified during this synchronization: `status=ok`, `service=bizaz-api`, `version=0.1.0`.
 - Docker/PostgreSQL and Windows scheduled-task status were not re-verified from this sandbox because those host capabilities are unavailable here. Their last approved operating result is recorded in the runbooks; live checks are required before production work.
@@ -19,8 +19,9 @@
 | Purchase Orders | рџџў Implemented | PO CRUD, controlled status transitions, company isolation, and audit acceptance tests exist. | Link to the request/offer flow. |
 | Purchase Requests / Supplier Offers / Comparison | 🟢 Implemented | Buyer purchase-request lifecycle, supplier offers, offer comparison, explicit supplier selection, purchase-order creation, authorization/company isolation, audit coverage, and expired-offer validation are implemented and covered by the procurement test suite. | 4.23.4 — frontend integration. |
 | Payments | 🟢 Implemented | Payment Engine is implemented with payment creation/status APIs, RBAC, controlled state transitions, duplicate-reference protection, payment limits, audit logging, and approval integration; payment acceptance coverage is verified. | Maintain payment controls and acceptance coverage. |
-| Delivery / Reviews / Notifications / KPI | 🔴 Not implemented | No completed delivery evidence for these capabilities in this baseline. | After the core procurement vertical slice. |
-| Automated Testing / CI | PASS | Local full backend regression: **198 passed**. Frontend security audit: **0 vulnerabilities**. GitHub Actions Run #28 passed all four quality gates: Backend syntax and full regression, PostgreSQL migration smoke check, Frontend production build, and Repository hygiene. | Maintain the automated regression and security gates for every code change. |
+| Delivery | Implemented; local browser acceptance and latest CI passed; PR review pending. | `/deliveries` frontend, dashboard navigation, company-scoped active-member API, explicit API guard for DELIVERED/CANCELLED item writes, and regression coverage are present. Existing DB trigger also protects terminal-state quantity integrity. | Pull the latest branch into Windows for a non-mutating runtime check, then review PR #1 before merge. |
+| Reviews / Notifications / KPI | Not implemented | No completed implementation evidence in this baseline. | Schedule as separate roadmap slices. |
+| Automated Testing / CI | PASS | GitHub Actions Run #65 for `c2c4d97`: **211 backend tests passed**; PostgreSQL migration smoke check, frontend production build/security audit, and repository hygiene also passed. | Maintain all four gates on every change. |
 | Production Operations & Governance (4.18–4.22.9) | рџџў PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
 
 
@@ -292,3 +293,54 @@ Acceptance evidence:
 - GitHub Actions Run #28 for commit `25d1bc8`: **SUCCESS**.
 - CI gates: Backend regression, PostgreSQL migration smoke check, Frontend production build, and Repository hygiene — all PASS.
 - Local AST, BOM, and `git diff --check` audits: PASS.
+
+
+## 4.23.13 — Delivery Frontend Integration
+
+**Status: Implemented / CI PASS / local browser acceptance passed; PR review pending.**
+
+Delivered scope in `feature/delivery-frontend-integration`:
+
+- Delivery registry at `/deliveries`, using the existing local API convention on port 8001.
+- Create a delivery only against an `APPROVED` purchase order.
+- Add purchase-order items with client-side remaining-quantity guidance; backend validation remains authoritative.
+- Update delivery status only through the existing allowed-transition list.
+- Select a company member for `received_by` when moving a delivery to `DELIVERED`.
+- Add `GET /api/v1/company/members`, returning only active members of the authenticated user's company.
+- Explicitly reject delivery-item addition at API level for `DELIVERED` and `CANCELLED` deliveries with HTTP 409; regression test covers both terminal states.
+- Add dashboard navigation and a tenant-scoped member-list regression test.
+
+Acceptance evidence:
+
+- GitHub Actions Run #65 for commit `c2c4d97`: **SUCCESS**, all four jobs passed.
+- Backend syntax and full regression: **211 passed** (51 dependency deprecation warnings; no test failures).
+- Terminal delivery item guard regression: `test_delivery_items_cannot_be_added_after_terminal_status` covers `CANCELLED` and `DELIVERED`.
+- PostgreSQL migration smoke check: PASS.
+- Frontend `npm audit --audit-level=low`: PASS.
+- Next.js production build: PASS.
+- Repository hygiene: PASS.
+- No database migration was added.
+- Local browser acceptance recorded on 2026-10-11: delivery creation, item entry, PLANNED → DISPATCHED → IN_TRANSIT → DELIVERED, receiver selection, and unit display fallback (`2 ədəd`) all passed. PR #1 is open for review and has not been merged.
+
+
+## 4.23.14 — Purchase Order Unit Corruption Guard
+
+**Status: Implemented / CI PASS; unit-normalization helper locally verified; latest terminal-guard runtime check pending.**
+
+Root-cause findings and correction:
+
+- The reusable test helper in `backend/tests/test_purchase_orders_acceptance.py` explicitly sent `unit: "?d?d"`; the purchase-order API persisted the incoming value instead of replacing visibly corrupted unit text. This identifies a bad test/input value, not evidence of a general PostgreSQL UTF-8 failure.
+- Product catalogue unit data and the model/schema defaults use the correct Azerbaijani unit `ədəd`.
+- Added backend normalization that preserves valid unit strings and falls back to the associated product's catalogue unit when the incoming value contains question-mark corruption or the Unicode replacement character.
+- Applied the guard to direct purchase-order creation, purchase-order item replacement, and purchase-order creation from a procurement offer selection.
+- Corrected the shared acceptance fixture to default to a Unicode-escaped `ədəd` and added `test_18_corrupted_purchase_order_unit_falls_back_to_product_unit`.
+
+Acceptance evidence:
+
+- GitHub Actions Run #54 for commit `e6068ca`: **SUCCESS**.
+- Backend syntax and full regression: PASS.
+- PostgreSQL migration smoke check: PASS.
+- Frontend production build: PASS.
+- Repository hygiene: PASS.
+- No database migration or modification to the already-delivered local test record was performed; the frontend fallback displays the catalogue unit for the old corrupted line.
+- The helper’s normalization cases passed in a separate local Python process after backend restart. The latest `c2c4d97` endpoint guard still needs a local checkout update; no write-request smoke test was used because that would create persistent acceptance data.
