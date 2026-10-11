@@ -354,9 +354,9 @@ Acceptance evidence:
 
 ## Next planned slice — 4.23.15 Reviews & Ratings
 
-Status: Draft technical specification prepared; no implementation is claimed yet.
+Status: Implemented on `feature/review-ratings`; not merged to `master`.
 
-Technical draft: docs/REVIEW-RATINGS-SPEC.md. P0 policy decisions remain open; no database/API/frontend code should be added until they are approved.
+Technical contract: `docs/REVIEW-RATINGS-SPEC.md`. Current slice includes additive PostgreSQL migration, ORM model, tenant-scoped Review APIs, audit and RBAC, the 24-hour author edit rule, `/reviews` frontend, acceptance tests and migration-smoke schema assertions. CI must be rerun against the latest branch head before merge consideration.
 
 The MVP scope lists Review/Rating as a must-have. Before database or API implementation, define the reviewable subject, eligible reviewer/recipient relationship, linkage to a completed delivery/transaction, duplicate and edit/withdraw rules, moderation policy, and audit requirements. Current MVP scope does not specify those policy details.
 

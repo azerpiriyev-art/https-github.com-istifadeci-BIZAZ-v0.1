@@ -398,6 +398,32 @@ export default function DashboardPage() {
             </button>
           </div>
 
+          <div
+            style={{
+              background: "#ffffff",
+              padding: "25px",
+              borderRadius: "10px",
+              border: "1px solid #ddd",
+            }}
+          >
+            <h3>Rəylər və reytinqlər</h3>
+            <p>Tam çatdırılmış sifarişlər üzrə təchizatçıları qiymətləndirin və şirkətdaxili orta reytinqlərə baxın.</p>
+            <button
+              onClick={() => router.push("/reviews")}
+              style={{
+                marginTop: "10px",
+                padding: "10px 18px",
+                background: "#198754",
+                color: "#ffffff",
+                border: "none",
+                borderRadius: "6px",
+                cursor: "pointer",
+              }}
+            >
+              Rəylərə keç
+            </button>
+          </div>
+
         </div>
       </section>
     </main>

@@ -3,7 +3,7 @@
 - Sənəd versiyası: 0.1
 - Status: DRAFT — biznes qərarları təsdiq edilməlidir
 - Tarix: 2026-10-11
-- Əsas baseline: master, commit f983e96
+- Əsas baseline: master, commit 232c627
 - Əlaqəli sənədlər: ROADMAP.md, STATUS.md, MVP-SCOPE.md
 
 ## 1. Məqsəd və sərhəd
@@ -26,9 +26,9 @@ Mövcud modellər, miqrasiyalar və API marşrutları yoxlanılıb. Hazırkı ba
 
 Sonuncu məhdudiyyət vacibdir: hazırkı sxemə əsasən müxtəlif alıcı şirkətlərin təchizatçı reytinqlərini vahid ictimai reputasiya balında təhlükəsiz birləşdirmək mümkünlüyü təsdiqlənməyib. Qlobal reytinq tələb olunarsa, təchizatçı kataloq qeydi ilə platforma şirkət hesabları arasında ayrıca identifikasiya əlaqəsi dizayn edilməlidir.
 
-## 3. Tövsiyə olunan MVP siyasəti — təsdiq tələb olunur
+## 3. MVP siyasəti — bu vertikal dilimdə tətbiq olunan seçimlər
 
-Aşağıdakılar mövcud məlumat modelinə uyğun ilkin təkliflərdir; təsdiqlənmiş biznes tələbi kimi qəbul edilməməlidir.
+Bu seçimlər MVP üçün qəbul edilmiş implementasiya çərçivəsidir. Dəyişikliklər hazırda `feature/review-ratings` branch-dədir; `master`-ə birləşdirilməyib.
 
 | Qərar | Tövsiyə olunan ilkin seçim | Səbəb |
 |---|---|---|
@@ -118,6 +118,16 @@ PATCH /api/v1/purchase-orders/{purchase_order_id}/review
 
 Bu marşrut yalnız 3-cü bölmədəki 24 saatlıq siyasət təsdiqlənərsə tətbiq edilir. Müəllifdən başqa istifadəçi redaktə edə bilməz; müddət keçibsə HTTP 409 qaytarılır. Hər dəyişiklik audit izini saxlayır.
 
+### 5.5. Sifarişlər üzrə batch rəy xülasəsi
+
+POST /api/v1/reviews/summary
+
+Sorğu:
+- purchase_order_ids: cari tenant daxilində yoxlanılan Purchase Order UUID-lərinin siyahısı; 1–10000 ID.
+- Endpoint yalnız cari şirkətə aid sifarişlərdən rəy və təchizatçı reytinq xülasəsi qaytarır; yad tenantın sifariş ID-si nəticələrdə məlumat yaratmır.
+- Cavab items massivində verilən sifarişlər üzrə mövcud rəylər, supplier_stats massivində isə həmin sifarişlərin təchizatçıları üzrə orta bal və rəy sayı verilir.
+- Frontend bu batch endpoint-dən istifadə etməlidir; hər sifariş üçün ayrıca rəy-detal sorğusu göndərilməməlidir.
+
 ## 6. HTTP xətaları və kontrakt
 
 | Vəziyyət | Təklif olunan HTTP |
@@ -191,15 +201,24 @@ Implementasiyaya başlamazdan əvvəl:
 5. Lokal integration acceptance tamam çatdırılmış test sifarişi ilə aparılır; production verilənləri dəyişdirilmir.
 6. Status və qəbul sübutları yenilənir; yalnız bundan sonra release nəzərdən keçirilir.
 
-## 11. Product Owner təsdiqi tələb edən P0 qərarlar
+## 11. Bu MVP dilimi üçün qərarlar
 
-Tətbiqdən əvvəl aşağıdakı qərarlar açıq təsdiqlənməlidir:
+| Mövzu | MVP qərarı |
+|---|---|
+| Görünürlük | Yalnız alıcı şirkətin öz təchizatçı kataloqu daxilində; ictimai/qlobal reytinq yoxdur. |
+| Rəyin obyekti | Hər Purchase Order üçün maksimum bir ümumi rəy. |
+| Uyğunluq şərti | Eyni sifariş üzrə ən azı bir `DELIVERED` çatdırılma qeydi olmalıdır. |
+| Rəyi kim yaza bilər | Aktiv istifadəçi; şirkət rolu `OWNER`, `ADMIN` və ya `PROCUREMENT`. |
+| Reytinq və mətn | Tam ədəd 1–5; könüllü plain-text şərh maksimum 2000 simvol. |
+| Redaktə | Yalnız müəllif, ilk yaradılmadan 24 saat ərzində; hər dəyişiklik audit edilir. |
+| Silinmə və moderasiya | Adi fiziki silinmə və moderator paneli yoxdur; ictimai yayımlama bu mərhələyə daxil deyil. |
 
-1. Görünürlük: hər alıcı şirkətin öz təchizatçı kataloqu üçün daxili qiymətləndirmə, yoxsa real təchizatçı şirkət hesabları üzrə qlobal/ictimai reputasiya? Tövsiyə: daxili tenant-səviyyəli model; qlobal model üçün supplier identity mapping ayrıca dizayn edilsin.
-2. Rəyin obyekti: hər Purchase Order, hər tam çatdırılma, yoxsa məhsul/xidmət? Tövsiyə: bir Purchase Order üçün bir ümumi rəy.
-3. İstifadəçi və rol: yalnız OWNER/ADMIN/PROCUREMENT, yoxsa əməliyyatda iştirak edən hər aktiv şirkət üzvü? Tövsiyə: başlanğıcda OWNER/ADMIN/PROCUREMENT.
-4. Qiymətləndirmə: bir ümumi 1–5 bal, yoxsa keyfiyyət, qiymət, çatdırılma və kommunikasiya üçün ayrıca ballar? Tövsiyə: bir ümumi bal.
-5. Redaktə: 24 saatlıq pəncərə, yoxsa rəy dəyişməz qalsın? Tövsiyə: müəllif üçün 24 saat, audit izi ilə.
-6. Moderasiya və şərh: ilkin versiyada şirkətdaxili görünürlük və mətn limiti, yoxsa şikayət, gizlətmə və platforma moderatoru da ilk buraxılışa daxildir? Tövsiyə: ilk versiyada moderator paneli və ictimai yayım olmasın.
+Bu qərarlar gələcəkdə dəyişdirilə bilər, lakin hər hansı qlobal/ictimai reputasiya modeli üçün supplier identifikasiyası, görünürlük və moderasiya ayrıca dizayn edilməlidir.
 
-Bu 6 qərar yekunlaşmadan schema/API/frontend implementasiyasına keçilməməlidir.
+## 12. İcra və buraxılış statusu
+
+- Migration: `014_review_ratings.sql`; additive, mövcud biznes sətirlərini dəyişdirmir.
+- Backend: tenant-scoped create/read/list/update marşrutları, rating/comment validasiyası, duplicate prevention, RBAC, 24 saat redaktə pəncərəsi və audit.
+- Frontend: `/reviews`, dashboard keçidi, şirkət rolu üzrə yazma icazəsinin göstərilməsi və çatdırılmalar üzrə server-side səhifələmə. UI hər səhifədə maksimum 100 çatdırılma sorğulamalı; bütün qalan səhifələri paralel şəkildə çağırmamalıdır.
+- Quality gates: backend regression, PostgreSQL migration smoke, frontend production build/security audit və repository hygiene.
+- Merge hələ edilməyib; yekun CI və manual acceptance təsdiqindən sonra ayrıca nəzərdən keçiriləcək.

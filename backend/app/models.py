@@ -2,7 +2,7 @@ from decimal import Decimal
 import uuid
 from datetime import datetime, date
 
-from sqlalchemy import Date, Boolean, CHAR, DateTime, ForeignKey, ForeignKeyConstraint, Integer, Numeric, String, Text, UniqueConstraint, func
+from sqlalchemy import Date, Boolean, CHAR, CheckConstraint, DateTime, ForeignKey, ForeignKeyConstraint, Integer, Numeric, SmallInteger, String, Text, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
@@ -1420,6 +1420,83 @@ class OfferSelection(Base):
         server_default=func.now(),
     )
 
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
+
+
+class Review(Base):
+    __tablename__ = "reviews"
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["purchase_order_id", "company_id", "supplier_id"],
+            [
+                "purchase_orders.id",
+                "purchase_orders.company_id",
+                "purchase_orders.supplier_id",
+            ],
+            name="fk_reviews_purchase_order_company_supplier",
+            ondelete="RESTRICT",
+        ),
+        ForeignKeyConstraint(
+            ["reviewer_user_id", "company_id"],
+            ["company_members.user_id", "company_members.company_id"],
+            name="fk_reviews_reviewer_company_member",
+            ondelete="RESTRICT",
+        ),
+        UniqueConstraint(
+            "purchase_order_id",
+            name="uq_reviews_purchase_order",
+        ),
+        CheckConstraint(
+            "rating >= 1 AND rating <= 5",
+            name="chk_reviews_rating_range",
+        ),
+        CheckConstraint(
+            "comment IS NULL OR char_length(comment) <= 2000",
+            name="chk_reviews_comment_length",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    purchase_order_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+    supplier_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("suppliers.id", ondelete="RESTRICT"),
+        nullable=False,
+    )
+    reviewer_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+    rating: Mapped[int] = mapped_column(
+        SmallInteger,
+        nullable=False,
+    )
+    comment: Mapped[str | None] = mapped_column(
+        Text,
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+    )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
