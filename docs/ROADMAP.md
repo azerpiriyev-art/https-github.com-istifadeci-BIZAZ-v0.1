@@ -368,9 +368,9 @@ Acceptance evidence:
 
 ## 4.23.15 — Reviews & Ratings (next MVP vertical slice)
 
-Status: Draft specification prepared; implementation pending Product Owner decision.
+Status: Implementation available in `feature/review-ratings`; validation and merge review pending.
 
-Technical draft: docs/REVIEW-RATINGS-SPEC.md. Do not add database migrations, API routes, or frontend code until the P0 policy decisions are approved.
+Contract: `docs/REVIEW-RATINGS-SPEC.md`. MVP scope is tenant-scoped, one review per delivered Purchase Order, OWNER/ADMIN/PROCUREMENT author roles, 1–5 rating, optional 2000-character comment, 24-hour author edit and audit. Do not merge until the latest CI and acceptance evidence are reviewed.
 
 Rationale: the delivery slice is now merged and verified. The MVP scope identifies Review/Rating, basic notifications, and the core KPI dashboard as remaining must-have capabilities. Reviews are the next slice in the recorded MVP sequence, followed by notifications and KPI.
 
