@@ -5,7 +5,7 @@
 - Tarix: 2026-10-11
 - Dizayn bazası: `master`, commit `848c866154c28858b30ada8f05920b061b333e8c`
 - Product Owner approval: confirmed in conversation on 2026-10-11
-- Scope: yalnız şirkətdaxili in-app bildirişlər; bu sənəd implementasiya deyil.
+- Scope: yalnız şirkətdaxili in-app bildirişlər; implementasiya `feature/basic-notifications` branch-ində davam edir.
 
 ## 1. Məqsəd
 
@@ -120,7 +120,7 @@ Constraints and indexes:
 - [ ] Təkrar/retry event bir recipient üçün duplicate bildiriş yaratmır.
 - [ ] Başqa şirkətin və ya başqa recipient-in bildirişini oxumaq/count etmək/mark-as-read etmək mümkün deyil.
 - [ ] Unread count, pagination, sıralama, idempotent mark-as-read və 404 isolation testləri var.
-- [ ] Retention planı və gündəlik purge mexanizmi əməliyyat prosedurunda dəqiqləşdirilib; 180 günlük təklif təsdiqlənib.
+- [x] 180 günlük saxlanma siyasəti təsdiqlənib; gündəlik purge script-i və administrator proseduru sənədləşdirilib. Faktiki production Task Scheduler qeydiyyatı release/deployment qapısı olaraq qalır.
 - [ ] Azerbaijani UI loading/empty/error/read/unread halları ilə browser acceptance keçir.
 - [ ] Full backend regression, PostgreSQL migration smoke, frontend production build/security audit, repository hygiene — dörd CI gate-in hamısı keçir.
 
