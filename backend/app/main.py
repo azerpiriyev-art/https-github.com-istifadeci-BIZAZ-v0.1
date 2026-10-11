@@ -7560,3 +7560,163 @@ def update_purchase_order_review(
 
     return review_response(review)
 
+
+# ============================================================
+# BASIC NOTIFICATIONS — tenant-scoped in-app inbox
+# ============================================================
+
+class NotificationResponseSchema(BaseModel):
+    id: uuid.UUID
+    event_type: str
+    title: str
+    body: str
+    source_entity_type: str
+    source_entity_id: uuid.UUID
+    created_at: datetime
+    read_at: datetime | None
+
+
+class NotificationListResponseSchema(BaseModel):
+    items: list[NotificationResponseSchema]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+
+class NotificationUnreadCountResponseSchema(BaseModel):
+    count: int
+
+
+def notification_response(notification: Notification) -> dict:
+    return {
+        "id": notification.id,
+        "event_type": notification.event_type,
+        "title": notification.title,
+        "body": notification.body,
+        "source_entity_type": notification.source_entity_type,
+        "source_entity_id": notification.source_entity_id,
+        "created_at": notification.created_at,
+        "read_at": notification.read_at,
+    }
+
+
+@app.get(
+    "/api/v1/notifications",
+    response_model=NotificationListResponseSchema,
+    tags=["notifications"],
+)
+@limiter.limit("60/minute")
+def list_notifications(
+    request: Request,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    unread_only: bool = Query(False),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+    conditions = [
+        Notification.company_id == membership.company_id,
+        Notification.recipient_user_id == current_user.id,
+    ]
+    if unread_only:
+        conditions.append(Notification.read_at.is_(None))
+
+    total = db.scalar(
+        select(func.count(Notification.id)).where(*conditions)
+    ) or 0
+    pages = (total + limit - 1) // limit if total else 0
+
+    notifications = db.scalars(
+        select(Notification)
+        .where(*conditions)
+        .order_by(Notification.created_at.desc(), Notification.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    ).all()
+
+    return NotificationListResponseSchema(
+        items=[notification_response(item) for item in notifications],
+        total=total,
+        page=page,
+        limit=limit,
+        pages=pages,
+    )
+
+
+@app.get(
+    "/api/v1/notifications/unread-count",
+    response_model=NotificationUnreadCountResponseSchema,
+    tags=["notifications"],
+)
+@limiter.limit("60/minute")
+def get_notification_unread_count(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+    count_value = db.scalar(
+        select(func.count(Notification.id)).where(
+            Notification.company_id == membership.company_id,
+            Notification.recipient_user_id == current_user.id,
+            Notification.read_at.is_(None),
+        )
+    ) or 0
+    return NotificationUnreadCountResponseSchema(count=int(count_value))
+
+
+@app.patch(
+    "/api/v1/notifications/{notification_id}/read",
+    response_model=NotificationResponseSchema,
+    tags=["notifications"],
+)
+@limiter.limit("60/minute")
+def mark_notification_as_read(
+    request: Request,
+    notification_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+    notification = db.scalar(
+        select(Notification)
+        .where(
+            Notification.id == notification_id,
+            Notification.company_id == membership.company_id,
+            Notification.recipient_user_id == current_user.id,
+        )
+        .with_for_update()
+    )
+    if notification is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Bildiriş tapılmadı.",
+        )
+
+    if notification.read_at is None:
+        notification.read_at = datetime.now(timezone.utc)
+        db.add(
+            AuditLog(
+                user_id=current_user.id,
+                company_id=membership.company_id,
+                action="NOTIFICATION_MARKED_READ",
+                entity_type="notification",
+                entity_id=notification.id,
+                log_metadata={
+                    "event_type": notification.event_type,
+                    "source_entity_type": notification.source_entity_type,
+                    "source_entity_id": str(notification.source_entity_id),
+                },
+            )
+        )
+        try:
+            db.commit()
+            db.refresh(notification)
+        except Exception:
+            db.rollback()
+            raise
+
+    return notification_response(notification)
+
