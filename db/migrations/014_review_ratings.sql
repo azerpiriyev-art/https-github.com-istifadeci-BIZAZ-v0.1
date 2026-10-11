@@ -21,8 +21,7 @@ CREATE TABLE reviews (
 
     rating SMALLINT NOT NULL,
 
-    comment TEXT
-        CHECK (comment IS NULL OR char_length(comment) <= 2000),
+    comment TEXT,
 
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
