@@ -14,11 +14,12 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy import select, func, or_
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
-from .models import ApprovalRequest, ApprovalStep, AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Payment, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User, Delivery, DeliveryItem, Review
+from .models import ApprovalRequest, ApprovalStep, AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Payment, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User, Delivery, DeliveryItem, Review, Notification
 
 
 # ============================================================
@@ -1162,6 +1163,170 @@ def get_current_membership(
         )
 
     return membership
+
+
+NOTIFICATION_EVENT_TYPES = {
+    "APPROVAL_ACTION_REQUIRED",
+    "APPROVAL_DECISION_RECORDED",
+    "PURCHASE_REQUEST_STATUS_CHANGED",
+    "SUPPLIER_OFFER_SUBMITTED",
+    "PURCHASE_ORDER_STATUS_CHANGED",
+    "DELIVERY_STATUS_CHANGED",
+    "PAYMENT_STATUS_CHANGED",
+}
+
+
+def _active_company_recipient_ids(
+    db: Session,
+    company_id: uuid.UUID,
+    *,
+    user_ids: list[uuid.UUID] | None = None,
+    roles: set[str] | None = None,
+    exclude_user_id: uuid.UUID | None = None,
+) -> list[uuid.UUID]:
+    statement = (
+        select(CompanyMember.user_id)
+        .join(User, User.id == CompanyMember.user_id)
+        .where(
+            CompanyMember.company_id == company_id,
+            User.is_active.is_(True),
+        )
+        .distinct()
+    )
+    if user_ids is not None:
+        if not user_ids:
+            return []
+        statement = statement.where(CompanyMember.user_id.in_(set(user_ids)))
+    if roles:
+        statement = statement.where(CompanyMember.role.in_(roles))
+    if exclude_user_id is not None:
+        statement = statement.where(CompanyMember.user_id != exclude_user_id)
+    return list(db.scalars(statement).all())
+
+
+def _queue_notifications(
+    db: Session,
+    *,
+    company_id: uuid.UUID,
+    recipient_ids: list[uuid.UUID],
+    event_type: str,
+    title: str,
+    body: str,
+    source_entity_type: str,
+    source_entity_id: uuid.UUID,
+    source_event_key: str,
+) -> None:
+    if event_type not in NOTIFICATION_EVENT_TYPES:
+        raise ValueError(f"Unsupported notification event type: {event_type}")
+    if not recipient_ids:
+        return
+
+    active_ids = _active_company_recipient_ids(
+        db,
+        company_id,
+        user_ids=list(set(recipient_ids)),
+    )
+    if not active_ids:
+        return
+
+    title = title.strip()
+    body = body.strip()
+    if not title or len(title) > 200:
+        raise ValueError("Notification title must contain 1..200 characters.")
+    if not body or len(body) > 1000:
+        raise ValueError("Notification body must contain 1..1000 characters.")
+    if len(source_event_key) > 180:
+        raise ValueError("Notification source_event_key exceeds 180 characters.")
+
+    rows = [
+        {
+            "company_id": company_id,
+            "recipient_user_id": recipient_id,
+            "event_type": event_type,
+            "title": title,
+            "body": body,
+            "source_entity_type": source_entity_type,
+            "source_entity_id": source_entity_id,
+            "source_event_key": source_event_key,
+        }
+        for recipient_id in set(active_ids)
+    ]
+
+    # Insert inside the caller's current transaction. The unique key and
+    # ON CONFLICT make event retries idempotent without poisoning the source
+    # business transaction with a duplicate-key exception.
+    db.execute(
+        pg_insert(Notification)
+        .values(rows)
+        .on_conflict_do_nothing(
+            constraint="uq_notifications_source_event_recipient"
+        )
+    )
+
+
+def _queue_role_notifications(
+    db: Session,
+    *,
+    company_id: uuid.UUID,
+    roles: set[str],
+    event_type: str,
+    title: str,
+    body: str,
+    source_entity_type: str,
+    source_entity_id: uuid.UUID,
+    source_event_key: str,
+    exclude_user_id: uuid.UUID | None = None,
+) -> None:
+    recipient_ids = _active_company_recipient_ids(
+        db,
+        company_id,
+        roles=roles,
+        exclude_user_id=exclude_user_id,
+    )
+    _queue_notifications(
+        db,
+        company_id=company_id,
+        recipient_ids=recipient_ids,
+        event_type=event_type,
+        title=title,
+        body=body,
+        source_entity_type=source_entity_type,
+        source_entity_id=source_entity_id,
+        source_event_key=source_event_key,
+    )
+
+
+def _queue_approval_action_notifications(
+    db: Session,
+    approval_request: ApprovalRequest,
+    steps: list[ApprovalStep],
+) -> None:
+    actionable_steps = _approval_eligible_steps(approval_request, steps)
+    entity_label = approval_request.entity_type.replace("_", " ").title()
+    for step in actionable_steps:
+        if step.approver_user_id is not None:
+            recipients = [step.approver_user_id]
+        elif step.approver_role:
+            recipients = _active_company_recipient_ids(
+                db,
+                approval_request.company_id,
+                roles={step.approver_role},
+            )
+        else:
+            recipients = []
+
+        _queue_notifications(
+            db,
+            company_id=approval_request.company_id,
+            recipient_ids=recipients,
+            event_type="APPROVAL_ACTION_REQUIRED",
+            title="Təsdiq tələb olunur",
+            body=f"{entity_label} üzrə təsdiq addımı sizin qərarınızı gözləyir.",
+            source_entity_type="APPROVAL_REQUEST",
+            source_entity_id=approval_request.id,
+            source_event_key=f"approval-action:{step.id}",
+        )
+
 
 
 def product_response(product: Product) -> dict:
