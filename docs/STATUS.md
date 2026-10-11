@@ -1,8 +1,8 @@
-# BIZAZ Status — 2026-10-03
+# BIZAZ Status — 2026-10-11
 
 ## Current baseline
 
-- Git baseline: `25d1bc8` — `test: add true e2e need to payment vertical slice`
+- Delivery integration checkpoint: `434abac` (Delivery Frontend implementation; PR #1 remains draft until manual acceptance and review).
 - Repository status at synchronization start: clean.
 - API health verified during this synchronization: `status=ok`, `service=bizaz-api`, `version=0.1.0`.
 - Docker/PostgreSQL and Windows scheduled-task status were not re-verified from this sandbox because those host capabilities are unavailable here. Their last approved operating result is recorded in the runbooks; live checks are required before production work.
@@ -19,8 +19,9 @@
 | Purchase Orders | рџџў Implemented | PO CRUD, controlled status transitions, company isolation, and audit acceptance tests exist. | Link to the request/offer flow. |
 | Purchase Requests / Supplier Offers / Comparison | 🟢 Implemented | Buyer purchase-request lifecycle, supplier offers, offer comparison, explicit supplier selection, purchase-order creation, authorization/company isolation, audit coverage, and expired-offer validation are implemented and covered by the procurement test suite. | 4.23.4 — frontend integration. |
 | Payments | 🟢 Implemented | Payment Engine is implemented with payment creation/status APIs, RBAC, controlled state transitions, duplicate-reference protection, payment limits, audit logging, and approval integration; payment acceptance coverage is verified. | Maintain payment controls and acceptance coverage. |
-| Delivery / Reviews / Notifications / KPI | 🔴 Not implemented | No completed delivery evidence for these capabilities in this baseline. | After the core procurement vertical slice. |
-| Automated Testing / CI | PASS | Local full backend regression: **198 passed**. Frontend security audit: **0 vulnerabilities**. GitHub Actions Run #28 passed all four quality gates: Backend syntax and full regression, PostgreSQL migration smoke check, Frontend production build, and Repository hygiene. | Maintain the automated regression and security gates for every code change. |
+| Delivery | Implemented in the integration branch; backend and frontend CI gates passed. Browser acceptance and review remain pending. | Delivery API, `/deliveries` frontend, dashboard navigation, company-scoped active-member API, and tenant-scope test are present. | Complete manual acceptance and review PR #1 before merge. |
+| Reviews / Notifications / KPI | Not implemented | No completed implementation evidence in this baseline. | Schedule as separate roadmap slices. |
+| Automated Testing / CI | PASS | GitHub Actions verified the Delivery integration code at `434abac`: backend syntax and full regression, PostgreSQL migration smoke check, frontend production build/security audit, and repository hygiene all passed. | Maintain all four gates on every change. |
 | Production Operations & Governance (4.18–4.22.9) | рџџў PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
 
 
@@ -292,3 +293,29 @@ Acceptance evidence:
 - GitHub Actions Run #28 for commit `25d1bc8`: **SUCCESS**.
 - CI gates: Backend regression, PostgreSQL migration smoke check, Frontend production build, and Repository hygiene — all PASS.
 - Local AST, BOM, and `git diff --check` audits: PASS.
+
+
+## 4.23.13 — Delivery Frontend Integration
+
+**Status: Implemented / CI PASS; browser acceptance and PR review pending.**
+
+Delivered scope in `feature/delivery-frontend-integration`:
+
+- Delivery registry at `/deliveries`, using the existing local API convention on port 8001.
+- Create a delivery only against an `APPROVED` purchase order.
+- Add purchase-order items with client-side remaining-quantity guidance; backend validation remains authoritative.
+- Update delivery status only through the existing allowed-transition list.
+- Select a company member for `received_by` when moving a delivery to `DELIVERED`.
+- Add `GET /api/v1/company/members`, returning only active members of the authenticated user's company.
+- Add dashboard navigation and a tenant-scoped member-list regression test.
+
+Acceptance evidence:
+
+- GitHub Actions PR run for implementation checkpoint `434abac`: all four CI jobs passed.
+- Backend syntax and full regression: PASS.
+- PostgreSQL migration smoke check: PASS.
+- Frontend `npm audit --audit-level=low`: PASS.
+- Next.js production build: PASS.
+- Repository hygiene: PASS.
+- No database migration was added.
+- Manual browser acceptance has not yet been recorded; PR #1 remains draft and has not been merged.
