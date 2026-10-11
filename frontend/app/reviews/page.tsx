@@ -109,6 +109,8 @@ export default function ReviewsPage() {
   const [rating, setRating] = useState(5);
   const [comment, setComment] = useState("");
   const [loading, setLoading] = useState(true);
+  const [deliveryPage, setDeliveryPage] = useState(1);
+  const [deliveryPageCount, setDeliveryPageCount] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -134,24 +136,14 @@ export default function ReviewsPage() {
       setCurrentUserId(me.user.id);
       setCurrentRole(me.company?.role ?? "");
 
+      // Load one server-paginated delivery page at a time. Fetching every
+      // remaining page in Promise.all can exceed the API's per-IP rate limit.
       const firstPage = await apiJson<DeliveryList>(
-        "/api/v1/deliveries?page=1&limit=100",
+        `/api/v1/deliveries?page=${deliveryPage}&limit=100`,
         token,
       );
-      const laterPages = firstPage.pages > 1
-        ? await Promise.all(
-            Array.from({ length: firstPage.pages - 1 }, (_, index) =>
-              apiJson<DeliveryList>(
-                `/api/v1/deliveries?page=${index + 2}&limit=100`,
-                token,
-              ),
-            ),
-          )
-        : [];
-      const deliveries = [
-        ...firstPage.items,
-        ...laterPages.flatMap((page) => page.items),
-      ];
+      setDeliveryPageCount(Math.max(1, firstPage.pages));
+      const deliveries = firstPage.items;
 
       const latestDeliveredByOrder = new Map<string, Delivery>();
       for (const delivery of deliveries) {
@@ -226,7 +218,7 @@ export default function ReviewsPage() {
     } finally {
       setLoading(false);
     }
-  }, [router]);
+  }, [router, deliveryPage]);
 
   useEffect(() => {
     void loadData();
@@ -346,6 +338,33 @@ export default function ReviewsPage() {
         <p role="status" style={{ background: "#eef8ee", color: "#176b2c", padding: 12, borderRadius: 6 }}>
           {notice}
         </p>
+      )}
+
+      {!loading && deliveryPageCount > 1 && (
+        <nav
+          aria-label="Çatdırılma səhifələnməsi"
+          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 20 }}
+        >
+          <button
+            type="button"
+            disabled={deliveryPage <= 1}
+            onClick={() => setDeliveryPage((page) => Math.max(1, page - 1))}
+            style={{ border: "1px solid #ccc", borderRadius: 6, padding: "8px 12px", background: "#fff", cursor: deliveryPage <= 1 ? "not-allowed" : "pointer" }}
+          >
+            Əvvəlki
+          </button>
+          <span aria-live="polite">
+            Çatdırılmaların səhifəsi {deliveryPage} / {deliveryPageCount}
+          </span>
+          <button
+            type="button"
+            disabled={deliveryPage >= deliveryPageCount}
+            onClick={() => setDeliveryPage((page) => Math.min(deliveryPageCount, page + 1))}
+            style={{ border: "1px solid #ccc", borderRadius: 6, padding: "8px 12px", background: "#fff", cursor: deliveryPage >= deliveryPageCount ? "not-allowed" : "pointer" }}
+          >
+            Növbəti
+          </button>
+        </nav>
       )}
 
       {loading ? (
