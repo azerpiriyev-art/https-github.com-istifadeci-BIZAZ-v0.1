@@ -297,7 +297,7 @@ Acceptance evidence:
 
 ## 4.23.13 — Delivery Frontend Integration
 
-**Status: Implemented / CI PASS; browser acceptance and PR review pending.**
+**Status: Implemented / CI PASS / local browser acceptance passed; PR review pending.**
 
 Delivered scope in `feature/delivery-frontend-integration`:
 
@@ -318,4 +318,26 @@ Acceptance evidence:
 - Next.js production build: PASS.
 - Repository hygiene: PASS.
 - No database migration was added.
-- Manual browser acceptance has not yet been recorded; PR #1 remains draft and has not been merged.
+- Local browser acceptance recorded on 2026-10-11: delivery creation, item entry, PLANNED → DISPATCHED → IN_TRANSIT → DELIVERED, receiver selection, and unit display fallback (`2 ədəd`) all passed. PR #1 remains draft and has not been merged.
+
+
+## 4.23.14 — Purchase Order Unit Corruption Guard
+
+**Status: Implemented / CI PASS; local backend pull and runtime verification pending.**
+
+Root-cause findings and correction:
+
+- The reusable test helper in `backend/tests/test_purchase_orders_acceptance.py` explicitly sent `unit: "?d?d"`; the purchase-order API persisted the incoming value instead of replacing visibly corrupted unit text. This identifies a bad test/input value, not evidence of a general PostgreSQL UTF-8 failure.
+- Product catalogue unit data and the model/schema defaults use the correct Azerbaijani unit `ədəd`.
+- Added backend normalization that preserves valid unit strings and falls back to the associated product's catalogue unit when the incoming value contains question-mark corruption or the Unicode replacement character.
+- Applied the guard to direct purchase-order creation, purchase-order item replacement, and purchase-order creation from a procurement offer selection.
+- Corrected the shared acceptance fixture to default to a Unicode-escaped `ədəd` and added `test_18_corrupted_purchase_order_unit_falls_back_to_product_unit`.
+
+Acceptance evidence:
+
+- GitHub Actions Run #54 for commit `e6068ca`: **SUCCESS**.
+- Backend syntax and full regression: PASS.
+- PostgreSQL migration smoke check: PASS.
+- Frontend production build: PASS.
+- Repository hygiene: PASS.
+- No database migration or modification to the already-delivered local test record was performed; the frontend fallback displays the catalogue unit for the old corrupted line.
