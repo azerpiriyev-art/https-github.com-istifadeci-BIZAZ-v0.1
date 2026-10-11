@@ -6848,6 +6848,10 @@ class ReviewCreateSchema(BaseModel):
     comment: str | None = Field(default=None, max_length=2000)
 
 
+class ReviewSummaryRequestSchema(BaseModel):
+    purchase_order_ids: list[uuid.UUID] = Field(min_length=1, max_length=10000)
+
+
 class ReviewUpdateSchema(BaseModel):
     rating: int | None = Field(default=None, ge=1, le=5, strict=True)
     comment: str | None = Field(default=None, max_length=2000)
@@ -6873,6 +6877,17 @@ class ReviewListResponseSchema(BaseModel):
     pages: int
     average_rating: float | None
     rating_count: int
+
+
+class SupplierRatingSummarySchema(BaseModel):
+    supplier_id: uuid.UUID
+    average_rating: float | None
+    rating_count: int
+
+
+class ReviewSummaryResponseSchema(BaseModel):
+    items: list[ReviewResponseSchema]
+    supplier_stats: list[SupplierRatingSummarySchema]
 
 
 def review_response(review: Review) -> dict:
@@ -7096,6 +7111,86 @@ def list_supplier_reviews(
         pages=pages,
         average_rating=average_rating,
         rating_count=total,
+    )
+
+
+@app.post(
+    "/api/v1/reviews/summary",
+    response_model=ReviewSummaryResponseSchema,
+    tags=["reviews"],
+)
+@limiter.limit("30/minute")
+def get_reviews_summary(
+    request: Request,
+    payload: ReviewSummaryRequestSchema,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Return reviews and per-supplier aggregates for a batch of tenant-owned orders."""
+    membership = get_current_membership(current_user, db)
+    purchase_order_ids = list(dict.fromkeys(payload.purchase_order_ids))
+
+    purchase_orders = db.execute(
+        select(PurchaseOrder.id, PurchaseOrder.supplier_id).where(
+            PurchaseOrder.company_id == membership.company_id,
+            PurchaseOrder.id.in_(purchase_order_ids),
+        )
+    ).all()
+    supplier_ids = sorted(
+        {supplier_id for _, supplier_id in purchase_orders},
+        key=str,
+    )
+
+    aggregate_by_supplier: dict[uuid.UUID, SupplierRatingSummarySchema] = {}
+    if supplier_ids:
+        aggregates = db.execute(
+            select(
+                Review.supplier_id,
+                func.count(Review.id),
+                func.avg(Review.rating),
+            )
+            .where(
+                Review.company_id == membership.company_id,
+                Review.supplier_id.in_(supplier_ids),
+            )
+            .group_by(Review.supplier_id)
+        ).all()
+
+        for supplier_id, count_value, average_value in aggregates:
+            aggregate_by_supplier[supplier_id] = SupplierRatingSummarySchema(
+                supplier_id=supplier_id,
+                average_rating=(
+                    round(float(average_value), 2)
+                    if average_value is not None
+                    else None
+                ),
+                rating_count=int(count_value or 0),
+            )
+
+    supplier_stats = [
+        aggregate_by_supplier.get(
+            supplier_id,
+            SupplierRatingSummarySchema(
+                supplier_id=supplier_id,
+                average_rating=None,
+                rating_count=0,
+            ),
+        )
+        for supplier_id in supplier_ids
+    ]
+
+    review_records = db.scalars(
+        select(Review)
+        .where(
+            Review.company_id == membership.company_id,
+            Review.purchase_order_id.in_(purchase_order_ids),
+        )
+        .order_by(Review.created_at.desc(), Review.id.desc())
+    ).all()
+
+    return ReviewSummaryResponseSchema(
+        items=[review_response(review) for review in review_records],
+        supplier_stats=supplier_stats,
     )
 
 
