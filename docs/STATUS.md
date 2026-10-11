@@ -354,7 +354,9 @@ Acceptance evidence:
 
 ## Next planned slice — 4.23.15 Reviews & Ratings
 
-Status: Planned; no implementation is claimed yet.
+Status: Draft technical specification prepared; no implementation is claimed yet.
+
+Technical draft: docs/REVIEW-RATINGS-SPEC.md. P0 policy decisions remain open; no database/API/frontend code should be added until they are approved.
 
 The MVP scope lists Review/Rating as a must-have. Before database or API implementation, define the reviewable subject, eligible reviewer/recipient relationship, linkage to a completed delivery/transaction, duplicate and edit/withdraw rules, moderation policy, and audit requirements. Current MVP scope does not specify those policy details.
 

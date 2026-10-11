@@ -368,7 +368,9 @@ Acceptance evidence:
 
 ## 4.23.15 — Reviews & Ratings (next MVP vertical slice)
 
-Status: Planned; not yet implemented.
+Status: Draft specification prepared; implementation pending Product Owner decision.
+
+Technical draft: docs/REVIEW-RATINGS-SPEC.md. Do not add database migrations, API routes, or frontend code until the P0 policy decisions are approved.
 
 Rationale: the delivery slice is now merged and verified. The MVP scope identifies Review/Rating, basic notifications, and the core KPI dashboard as remaining must-have capabilities. Reviews are the next slice in the recorded MVP sequence, followed by notifications and KPI.
 
