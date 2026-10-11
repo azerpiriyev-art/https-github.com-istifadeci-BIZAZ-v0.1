@@ -1,5 +1,4 @@
 import uuid
-from datetime import datetime, timedelta, timezone
 
 import requests
 
@@ -446,3 +445,118 @@ def test_business_events_create_transactional_notifications(
             (recipient_id, company_id),
         )
         test_db.execute("DELETE FROM users WHERE id = %s", (recipient_id,))
+
+def test_purchase_request_status_change_notifies_request_owner(
+    base_url,
+    auth_headers,
+    test_company_data,
+    test_db,
+):
+    recipient_id = uuid.uuid4()
+    recipient_email = f"notification-recipient-{uuid.uuid4().hex}@example.test"
+    purchase_request_id = None
+
+    test_db.execute(
+        """
+        INSERT INTO users (id, email, password_hash, full_name, is_active)
+        VALUES (%s, %s, %s, %s, TRUE)
+        """,
+        (
+            recipient_id,
+            recipient_email,
+            "acceptance-test-no-login",
+            "Notification Test Recipient",
+        ),
+    )
+    test_db.execute(
+        """
+        INSERT INTO company_members (user_id, company_id, role)
+        VALUES (%s, %s, 'ADMIN')
+        """,
+        (
+            recipient_id,
+            uuid.UUID(test_company_data["company_id"]),
+        ),
+    )
+
+    try:
+        created = requests.post(
+            f"{base_url}/api/v1/procurement/purchase-requests",
+            headers=auth_headers,
+            json={
+                "request_number": f"NOTIF-{uuid.uuid4().hex[:12].upper()}",
+                "status": "DRAFT",
+                "items": [
+                    {
+                        "product_id": test_company_data["product_id"],
+                        "quantity": "1",
+                        "unit": "ədəd",
+                    }
+                ],
+            },
+            timeout=20,
+        )
+        assert created.status_code in (200, 201), created.text
+        purchase_request_id = created.json()["id"]
+
+        # In production this requester is the initiator assigned by the
+        # workflow. Reassigning only this newly-created test row lets the
+        # acceptance test verify delivery to a different active member.
+        test_db.execute(
+            "UPDATE purchase_requests SET requested_by = %s WHERE id = %s",
+            (recipient_id, uuid.UUID(purchase_request_id)),
+        )
+
+        changed = requests.put(
+            f"{base_url}/api/v1/procurement/purchase-requests/{purchase_request_id}/status",
+            headers=auth_headers,
+            json={"status": "SUBMITTED"},
+            timeout=20,
+        )
+        assert changed.status_code == 200, changed.text
+
+        rows = test_db.execute(
+            """
+            SELECT id, event_type, title, body, source_event_key
+            FROM notifications
+            WHERE company_id = %s
+              AND recipient_user_id = %s
+              AND source_entity_type = 'PURCHASE_REQUEST'
+              AND source_entity_id = %s
+            """,
+            (
+                uuid.UUID(test_company_data["company_id"]),
+                recipient_id,
+                uuid.UUID(purchase_request_id),
+            ),
+        ).fetchall()
+        assert len(rows) == 1, rows
+        assert rows[0][1] == "PURCHASE_REQUEST_STATUS_CHANGED"
+        assert "SUBMITTED" in rows[0][3]
+        assert rows[0][4] == (
+            f"purchase-request-status:{purchase_request_id}:DRAFT:SUBMITTED"
+        )
+    finally:
+        if purchase_request_id:
+            request_uuid = uuid.UUID(purchase_request_id)
+            test_db.execute(
+                "DELETE FROM notifications WHERE source_entity_id = %s",
+                (request_uuid,),
+            )
+            test_db.execute(
+                "DELETE FROM audit_log WHERE entity_id = %s",
+                (request_uuid,),
+            )
+            test_db.execute(
+                "DELETE FROM purchase_requests WHERE id = %s",
+                (request_uuid,),
+            )
+        test_db.execute(
+            "DELETE FROM company_members WHERE user_id = %s",
+            (recipient_id,),
+        )
+        test_db.execute(
+            "DELETE FROM users WHERE id = %s",
+            (recipient_id,),
+        )
+
