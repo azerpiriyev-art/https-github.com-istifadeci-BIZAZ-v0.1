@@ -2,8 +2,9 @@
 
 ## Document control
 
-- Current synchronization: 2026-10-03
-- Confirmed version-control baseline: `25d1bc8` — `test: add true e2e need to payment vertical slice`
+- Current synchronization: 2026-10-11
+- Historical product-development baseline: `25d1bc8` — `test: add true e2e need to payment vertical slice`
+- Current delivery audit checkpoint: `c2c4d97`; PR #1 remains open and unmerged while local runtime review is pending.
 - Rule: a stage is complete only with recorded acceptance evidence; a planned capability is not represented as delivered.
 
 ## Product roadmap
@@ -318,12 +319,14 @@ Delivered scope:
 - Delivery-item entry with quantity/remaining-quantity validation hints.
 - Status updates limited in the UI to the backend's existing transition contract.
 - Company-scoped list of active members for the required `received_by` field.
+- API-level guard returns HTTP 409 when attempting to add an item to a `DELIVERED` or `CANCELLED` delivery; regression coverage tests both cases. The database trigger already enforces the underlying terminal-state quantity invariant.
 - Regression test for the member endpoint's company scope and active-user filter.
 
 Acceptance evidence:
 
-- Backend syntax and full regression: PASS in GitHub Actions.
-- PostgreSQL migration smoke check: PASS.
+- GitHub Actions Run #65 for commit `c2c4d97`: **SUCCESS**; all four quality gates passed.
+- Backend syntax and full regression: **211 passed**, 51 dependency deprecation warnings and no failures.
+- Terminal-state item-add regression covers `CANCELLED` and `DELIVERED`.
 - Frontend security audit: PASS.
 - Frontend production build: PASS.
 - Repository hygiene: PASS.
@@ -333,7 +336,7 @@ Acceptance evidence:
 
 ### 4.23.14 — Purchase Order Unit Corruption Guard
 
-Status: Complete / CI PASS; local backend pull and runtime verification pending.
+Status: Complete / CI PASS; local unit-normalization helper verified; latest terminal-guard runtime check pending.
 
 Delivered scope:
 
@@ -349,3 +352,4 @@ Acceptance evidence:
 - GitHub Actions Run #54 for commit `e6068ca`: **SUCCESS**.
 - Backend syntax and full regression, PostgreSQL migration smoke check, frontend production build, and repository hygiene: all PASS.
 - No database migration and no mutation of the existing delivered local test record.
+- Unit-normalization cases passed locally after the backend restart at the prior local checkpoint. The `c2c4d97` terminal-guard commit still needs to be pulled to the Windows checkout; no local write-request smoke test was run to avoid creating persistent acceptance data.
