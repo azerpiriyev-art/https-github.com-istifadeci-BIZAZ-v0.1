@@ -277,7 +277,10 @@ export default function DeliveriesPage() {
   async function loadAllPages<T>(path: string): Promise<T[]> {
     const first = await requestJson<PageResponse<T>>(path + "?page=1&limit=100");
     const result = Array.isArray(first.items) ? [...first.items] : [];
-    const pageCount = Math.max(1, Math.min(Number(first.pages) || 1, 100));
+    const reportedPages = Number(first.pages);
+    const pageCount = Number.isFinite(reportedPages)
+      ? Math.max(1, Math.floor(reportedPages))
+      : 1;
 
     for (let page = 2; page <= pageCount; page += 1) {
       const next = await requestJson<PageResponse<T>>(
