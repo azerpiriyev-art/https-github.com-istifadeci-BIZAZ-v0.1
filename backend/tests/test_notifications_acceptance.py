@@ -221,13 +221,15 @@ def test_notification_event_queue_is_idempotent(
     test_db,
 ):
     from sqlalchemy import create_engine
+    from sqlalchemy.engine import make_url
     from sqlalchemy.orm import Session
 
     from app.main import _queue_notifications
 
     source_entity_id = uuid.uuid4()
     source_event_key = f"test-idempotency:{uuid.uuid4()}"
-    engine = create_engine(test_database_url.replace("postgresql://", "postgresql+psycopg://", 1))
+    database_url = make_url(test_database_url).set(drivername="postgresql+psycopg")
+    engine = create_engine(database_url)
     try:
         with Session(engine) as db:
             _queue_notifications(
