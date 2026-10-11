@@ -410,6 +410,18 @@ def test_delivery_items_cannot_be_added_after_terminal_status(
     assert delivery_response.status_code == 201, delivery_response.text
     delivery_id = delivery_response.json()["id"]
 
+    if terminal_status == "DELIVERED":
+        initial_item_response = requests.post(
+            f"{base_url}/api/v1/deliveries/{delivery_id}/items",
+            headers=acceptance_owner_headers,
+            json={
+                "purchase_order_item_id": purchase_order["items"][0]["id"],
+                "quantity_delivered": 1,
+            },
+            timeout=10,
+        )
+        assert initial_item_response.status_code == 201, initial_item_response.text
+
     transitions = (
         ["CANCELLED"]
         if terminal_status == "CANCELLED"
