@@ -5790,6 +5790,12 @@ def create_delivery_item(
             detail="Çatdırılma tapılmadı.",
         )
 
+    if delivery.status in ("DELIVERED", "CANCELLED"):
+        raise HTTPException(
+            status_code=409,
+            detail="Yekun statuslu çatdırılmaya element əlavə edilə bilməz.",
+        )
+
     purchase_order = db.scalar(
         select(PurchaseOrder).where(
             PurchaseOrder.id == delivery.purchase_order_id,
