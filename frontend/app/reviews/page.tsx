@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
 const API_URL = "http://127.0.0.1:8001";
@@ -52,6 +52,11 @@ type SupplierStats = {
   rating_count: number;
 };
 
+type CurrentUserResponse = {
+  user: { id: string; is_active: boolean };
+  company: { id: string; role: string } | null;
+};
+
 type ReviewEntry = {
   delivery: Delivery;
   review: Review | null;
@@ -98,6 +103,8 @@ export default function ReviewsPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [currentUserId, setCurrentUserId] = useState("");
+  const [currentRole, setCurrentRole] = useState("");
 
   const loadData = useCallback(async () => {
     const token = localStorage.getItem(TOKEN_KEY);
@@ -109,6 +116,15 @@ export default function ReviewsPage() {
     setLoading(true);
     setError("");
     try {
+      const me = await apiJson<CurrentUserResponse>("/api/v1/me", token);
+      if (!me.user?.is_active) {
+        localStorage.removeItem(TOKEN_KEY);
+        router.replace("/login");
+        return;
+      }
+      setCurrentUserId(me.user.id);
+      setCurrentRole(me.company?.role ?? "");
+
       const firstPage = await apiJson<DeliveryList>(
         "/api/v1/deliveries?page=1&limit=100",
         token,
@@ -197,7 +213,7 @@ export default function ReviewsPage() {
       }
     } catch (loadError) {
       const apiError = loadError as ApiError;
-      if (apiError.status === 401 || apiError.status === 403) {
+      if (apiError.status === 401) {
         localStorage.removeItem(TOKEN_KEY);
         router.replace("/login");
         return;
@@ -220,14 +236,17 @@ export default function ReviewsPage() {
     () => entries.filter((entry) => entry.review !== null),
     [entries],
   );
-  const selectedEntry = pendingEntries.find(
-    (entry) =>
-      entry.delivery.purchase_order_id === selectedPurchaseOrder,
+  const canWrite = ["OWNER", "ADMIN", "PROCUREMENT"].includes(currentRole);
+  const selectedEntry = entries.find(
+    (entry) => entry.delivery.purchase_order_id === selectedPurchaseOrder,
   );
+  const isEditing = selectedEntry?.review != null;
+  const canEditReview = (review: Review) =>
+    Date.now() - Date.parse(review.created_at) <= 24 * 60 * 60 * 1000;
 
-  const submitReview = async (event: React.FormEvent<HTMLFormElement>) => {
+  const submitReview = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!selectedEntry) return;
+    if (!selectedEntry || !canWrite) return;
 
     const token = localStorage.getItem(TOKEN_KEY);
     if (!token) {
@@ -243,21 +262,21 @@ export default function ReviewsPage() {
         `/api/v1/purchase-orders/${selectedEntry.delivery.purchase_order_id}/review`,
         token,
         {
-          method: "POST",
+          method: isEditing ? "PATCH" : "POST",
           body: JSON.stringify({
             rating,
             comment: comment.trim() || null,
           }),
         },
       );
-      setNotice("Rəy uğurla qeydə alındı.");
+      setNotice(isEditing ? "Rəy uğurla yeniləndi." : "Rəy uğurla qeydə alındı.");
       setSelectedPurchaseOrder("");
       setRating(5);
       setComment("");
       await loadData();
     } catch (submitError) {
       const apiError = submitError as ApiError;
-      if (apiError.status === 401 || apiError.status === 403) {
+      if (apiError.status === 401) {
         localStorage.removeItem(TOKEN_KEY);
         router.replace("/login");
         return;
@@ -271,7 +290,7 @@ export default function ReviewsPage() {
     }
   };
 
-  const cardStyle: React.CSSProperties = {
+  const cardStyle: CSSProperties = {
     background: "#fff",
     border: "1px solid #ddd",
     borderRadius: 10,
@@ -338,10 +357,13 @@ export default function ReviewsPage() {
                         Təchizatçı üzrə orta bal: {entry.stats.average_rating ?? "—"} · Rəy sayı: {entry.stats.rating_count}
                       </p>
                     </div>
+                    {canWrite ? (
                     <button
                       type="button"
                       onClick={() => {
                         setSelectedPurchaseOrder(entry.delivery.purchase_order_id);
+                        setRating(5);
+                        setComment("");
                         setError("");
                         setNotice("");
                       }}
@@ -356,16 +378,23 @@ export default function ReviewsPage() {
                     >
                       {selectedPurchaseOrder === entry.delivery.purchase_order_id ? "Seçildi" : "Təchizatçını qiymətləndir"}
                     </button>
+                    ) : (
+                      <span style={{ color: "#666" }}>Bu rol ilə rəy yazmaq icazəsi yoxdur.</span>
+                    )}
                   </div>
                 </article>
               ))
             )}
           </section>
 
-          {selectedEntry && (
+          {selectedEntry && canWrite && (
+            (!selectedEntry.review || (
+              selectedEntry.review.reviewer_user_id === currentUserId &&
+              canEditReview(selectedEntry.review)
+            )) && (
             <section style={{ ...cardStyle, marginBottom: 32 }}>
               <h2 style={{ fontSize: 20, fontWeight: 650, marginBottom: 14 }}>
-                Sifariş üzrə rəy
+                {isEditing ? "Rəyi redaktə et" : "Sifariş üzrə rəy"}
               </h2>
               <form onSubmit={submitReview}>
                 <label htmlFor="review-rating" style={{ display: "block", fontWeight: 600, marginBottom: 6 }}>
@@ -404,7 +433,7 @@ export default function ReviewsPage() {
                     disabled={submitting}
                     style={{ background: "#198754", color: "#fff", border: 0, borderRadius: 6, padding: "10px 16px", cursor: submitting ? "wait" : "pointer", opacity: submitting ? 0.7 : 1 }}
                   >
-                    {submitting ? "Göndərilir..." : "Rəyi göndər"}
+                    {submitting ? "Göndərilir..." : isEditing ? "Dəyişiklikləri saxla" : "Rəyi göndər"}
                   </button>
                   <button
                     type="button"
@@ -416,6 +445,7 @@ export default function ReviewsPage() {
                 </div>
               </form>
             </section>
+          )
           )}
 
           <section>
@@ -442,6 +472,23 @@ export default function ReviewsPage() {
                       <p style={{ color: "#555", fontSize: 12, marginTop: 5 }}>
                         Təchizatçı ortalaması: {entry.stats.average_rating ?? "—"}
                       </p>
+                      {canWrite &&
+                        entry.review!.reviewer_user_id === currentUserId &&
+                        canEditReview(entry.review!) && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedPurchaseOrder(entry.delivery.purchase_order_id);
+                              setRating(entry.review!.rating);
+                              setComment(entry.review!.comment ?? "");
+                              setError("");
+                              setNotice("");
+                            }}
+                            style={{ marginTop: 10, background: "#f3f3f3", border: "1px solid #ccc", borderRadius: 6, padding: "7px 10px", cursor: "pointer" }}
+                          >
+                            Rəyi redaktə et
+                          </button>
+                        )}
                     </div>
                   </div>
                 </article>
