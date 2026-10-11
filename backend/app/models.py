@@ -1502,3 +1502,72 @@ class Review(Base):
         nullable=False,
         server_default=func.now(),
     )
+
+
+class Notification(Base):
+    __tablename__ = "notifications"
+
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["recipient_user_id", "company_id"],
+            ["company_members.user_id", "company_members.company_id"],
+            name="fk_notifications_recipient_company_member",
+            ondelete="CASCADE",
+        ),
+        UniqueConstraint(
+            "company_id",
+            "recipient_user_id",
+            "source_event_key",
+            name="uq_notifications_source_event_recipient",
+        ),
+        CheckConstraint(
+            "event_type IN ("
+            "'APPROVAL_ACTION_REQUIRED',"
+            "'APPROVAL_DECISION_RECORDED',"
+            "'PURCHASE_REQUEST_STATUS_CHANGED',"
+            "'SUPPLIER_OFFER_SUBMITTED',"
+            "'PURCHASE_ORDER_STATUS_CHANGED',"
+            "'DELIVERY_STATUS_CHANGED',"
+            "'PAYMENT_STATUS_CHANGED'"
+            ")",
+            name="chk_notifications_event_type",
+        ),
+        CheckConstraint(
+            "char_length(trim(title)) BETWEEN 1 AND 200",
+            name="chk_notifications_title_length",
+        ),
+        CheckConstraint(
+            "char_length(trim(body)) BETWEEN 1 AND 1000",
+            name="chk_notifications_body_length",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        primary_key=True,
+        server_default=func.gen_random_uuid(),
+    )
+    company_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("companies.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    recipient_user_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=False,
+    )
+    event_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    title: Mapped[str] = mapped_column(String(200), nullable=False)
+    body: Mapped[str] = mapped_column(String(1000), nullable=False)
+    source_entity_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    source_entity_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), nullable=False
+    )
+    source_event_key: Mapped[str] = mapped_column(String(180), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    read_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
