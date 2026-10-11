@@ -7,7 +7,7 @@ from sqlalchemy.orm import sessionmaker
 from app.models import AuditLog
 
 
-def create_po(base_url, headers, acceptance_owner_data, prefix="PO-4-15"):
+def create_po(base_url, headers, acceptance_owner_data, prefix="PO-4-15", unit_value="\u0259d\u0259d"):
     order_number = f"{prefix}-{uuid.uuid4().hex[:8].upper()}"
 
     payload = {
@@ -20,7 +20,7 @@ def create_po(base_url, headers, acceptance_owner_data, prefix="PO-4-15"):
             {
                 "product_id": acceptance_owner_data["product_id"],
                 "quantity": 1,
-                "unit": "?d?d",
+                "unit": unit_value,
                 "unit_price": 500,
                 "vat_rate": 18,
             }
@@ -361,3 +361,17 @@ def test_17_draft_purchase_order_payment_creation_rejected(
 
     assert response.status_code == 409, response.text
     assert "APPROVED or RECEIVED" in response.text
+
+
+def test_18_corrupted_purchase_order_unit_falls_back_to_product_unit(
+    base_url, acceptance_owner_headers, acceptance_owner_data
+):
+    data = create_po(
+        base_url,
+        acceptance_owner_headers,
+        acceptance_owner_data,
+        prefix="PO-UNIT-FALLBACK",
+        unit_value="?d?d",
+    )
+
+    assert data["items"][0]["unit"] == "ədəd"
