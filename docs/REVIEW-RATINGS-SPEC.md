@@ -1,16 +1,16 @@
 # Review & Ratings — Texniki Spesifikasiya
 
 - Sənəd versiyası: 0.1
-- Status: DRAFT — biznes qərarları təsdiq edilməlidir
+- Status: Accepted MVP contract — implemented and merged
 - Tarix: 2026-10-11
-- Əsas baseline: master, commit 232c627
+- Əsas baseline: master, merge commit 4f7369663802bd49296055694b00bf34a7d8bbc9
 - Əlaqəli sənədlər: ROADMAP.md, STATUS.md, MVP-SCOPE.md
 
 ## 1. Məqsəd və sərhəd
 
 Review & Ratings modulu tamamlanmış satınalma əməliyyatından sonra təchizatçı barədə strukturlaşdırılmış qiymətləndirməni qeydə almaq, rəyi həmin əməliyyata bağlamaq, təkrar və icazəsiz rəyləri bloklamaq və nəticəni mövcud şirkət sərhədləri daxilində göstərmək üçün nəzərdə tutulur.
 
-Bu sənəd texniki müqavilənin layihəsidir. Buradakı siyasət təklifləri Product Owner tərəfindən təsdiqlənmədən verilənlər bazası miqrasiyası, API və ya frontend funksionallığı tətbiq edilməməlidir.
+Bu sənəd Review & Ratings MVP üçün qəbul edilmiş texniki müqaviləni təsvir edir. Hazırkı müqavilə tenant-səviyyəli təchizatçı kataloqu və tamamlanmış Purchase Order üzrə bir ümumi rəy modelinə əsaslanır. İctimai/qobal reputasiya və moderasiya bu scope-a daxil deyil.
 
 ## 2. Mövcud kod bazasından təsdiqlənən faktlar
 
@@ -221,4 +221,7 @@ Bu qərarlar gələcəkdə dəyişdirilə bilər, lakin hər hansı qlobal/ictim
 - Backend: tenant-scoped create/read/list/update marşrutları, rating/comment validasiyası, duplicate prevention, RBAC, 24 saat redaktə pəncərəsi və audit.
 - Frontend: `/reviews`, dashboard keçidi, şirkət rolu üzrə yazma icazəsinin göstərilməsi və çatdırılmalar üzrə server-side səhifələmə. UI hər səhifədə maksimum 100 çatdırılma sorğulamalı; bütün qalan səhifələri paralel şəkildə çağırmamalıdır.
 - Quality gates: backend regression, PostgreSQL migration smoke, frontend production build/security audit və repository hygiene.
-- Merge hələ edilməyib; yekun CI və manual acceptance təsdiqindən sonra ayrıca nəzərdən keçiriləcək.
+- Merge: PR #2, commit `4f7369663802bd49296055694b00bf34a7d8bbc9`.
+- Pre-merge CI Run `38167889764` and post-merge CI Run #111 (`38169190885`): all four quality gates passed; backend regression 221 passed, 56 dependency deprecation warnings, no failures.
+- Manual browser acceptance: review create/list/edit succeeded; rating 4/5 and updated comment remained visible; `POST /api/v1/reviews/summary` returned HTTP 200.
+- Codex review of head `0309e80` found no major issues. Both rate-limit findings were addressed and the review threads resolved.
