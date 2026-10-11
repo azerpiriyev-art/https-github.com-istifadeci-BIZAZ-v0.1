@@ -305,3 +305,27 @@ Acceptance evidence:
 - GitHub Actions Run #28 for commit `25d1bc8`: **SUCCESS**.
 - All four CI jobs passed.
 - No production application code was changed by this slice; the delivered change is the E2E acceptance test.
+
+
+### 4.23.13 — Delivery Frontend Integration
+
+Status: Implemented / CI PASS; manual acceptance and PR review pending.
+
+Delivered scope:
+
+- Delivery registry UI at `/deliveries` and dashboard navigation.
+- Delivery creation from `APPROVED` purchase orders only.
+- Delivery-item entry with quantity/remaining-quantity validation hints.
+- Status updates limited in the UI to the backend's existing transition contract.
+- Company-scoped list of active members for the required `received_by` field.
+- Regression test for the member endpoint's company scope and active-user filter.
+
+Acceptance evidence:
+
+- Backend syntax and full regression: PASS in GitHub Actions.
+- PostgreSQL migration smoke check: PASS.
+- Frontend security audit: PASS.
+- Frontend production build: PASS.
+- Repository hygiene: PASS.
+- No database migration changes.
+- Browser/manual acceptance and pull-request review are still required before merge.
