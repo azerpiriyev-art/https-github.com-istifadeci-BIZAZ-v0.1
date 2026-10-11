@@ -10,7 +10,7 @@
 
 Review & Ratings modulu tamamlanmış satınalma əməliyyatından sonra təchizatçı barədə strukturlaşdırılmış qiymətləndirməni qeydə almaq, rəyi həmin əməliyyata bağlamaq, təkrar və icazəsiz rəyləri bloklamaq və nəticəni mövcud şirkət sərhədləri daxilində göstərmək üçün nəzərdə tutulur.
 
-Bu sənəd Review & Ratings MVP üçün qəbul edilmiş texniki müqaviləni təsvir edir. Hazırkı müqavilə tenant-səviyyəli təchizatçı kataloqu və tamamlanmış Purchase Order üzrə bir ümumi rəy modelinə əsaslanır. İctimai/qobal reputasiya və moderasiya bu scope-a daxil deyil.
+Bu sənəd Review & Ratings MVP üçün qəbul edilmiş texniki müqaviləni təsvir edir. Hazırkı müqavilə tenant-səviyyəli təchizatçı kataloqu və tamamlanmış Purchase Order üzrə bir ümumi rəy modelinə əsaslanır. İctimai/qlobal reputasiya və moderasiya bu scope-a daxil deyil.
 
 ## 2. Mövcud kod bazasından təsdiqlənən faktlar
 
@@ -193,7 +193,7 @@ Frontend qəbul testləri:
 
 ## 10. Qəbul şərtləri və buraxılış ardıcıllığı
 
-Implementasiyaya başlamazdan əvvəl:
+İcra zamanı istifadə edilən qəbul ardıcıllığı (tarixi siyahı; cari nəticələr Bölmə 12-dədir):
 1. Product Owner 11-ci bölmədəki P0 qərarları təsdiq edir.
 2. DB migration dizaynı və tenant isolation modeli design review-dan keçir.
 3. Backend, migration, audit və frontend testləri yazılır.
