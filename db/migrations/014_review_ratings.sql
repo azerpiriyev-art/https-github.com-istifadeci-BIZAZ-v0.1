@@ -19,8 +19,7 @@ CREATE TABLE reviews (
 
     reviewer_user_id UUID NOT NULL,
 
-    rating SMALLINT NOT NULL
-        CHECK (rating BETWEEN 1 AND 5),
+    rating SMALLINT NOT NULL,
 
     comment TEXT
         CHECK (comment IS NULL OR char_length(comment) <= 2000),
