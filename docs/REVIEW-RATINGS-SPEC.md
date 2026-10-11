@@ -118,6 +118,16 @@ PATCH /api/v1/purchase-orders/{purchase_order_id}/review
 
 Bu marşrut yalnız 3-cü bölmədəki 24 saatlıq siyasət təsdiqlənərsə tətbiq edilir. Müəllifdən başqa istifadəçi redaktə edə bilməz; müddət keçibsə HTTP 409 qaytarılır. Hər dəyişiklik audit izini saxlayır.
 
+### 5.5. Sifarişlər üzrə batch rəy xülasəsi
+
+POST /api/v1/reviews/summary
+
+Sorğu:
+- purchase_order_ids: cari tenant daxilində yoxlanılan Purchase Order UUID-lərinin siyahısı; 1–10000 ID.
+- Endpoint yalnız cari şirkətə aid sifarişlərdən rəy və təchizatçı reytinq xülasəsi qaytarır; yad tenantın sifariş ID-si nəticələrdə məlumat yaratmır.
+- Cavab items massivində verilən sifarişlər üzrə mövcud rəylər, supplier_stats massivində isə həmin sifarişlərin təchizatçıları üzrə orta bal və rəy sayı verilir.
+- Frontend bu batch endpoint-dən istifadə etməlidir; hər sifariş üçün ayrıca rəy-detal sorğusu göndərilməməlidir.
+
 ## 6. HTTP xətaları və kontrakt
 
 | Vəziyyət | Təklif olunan HTTP |
