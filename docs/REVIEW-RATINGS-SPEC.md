@@ -219,6 +219,6 @@ Bu qərarlar gələcəkdə dəyişdirilə bilər, lakin hər hansı qlobal/ictim
 
 - Migration: `014_review_ratings.sql`; additive, mövcud biznes sətirlərini dəyişdirmir.
 - Backend: tenant-scoped create/read/list/update marşrutları, rating/comment validasiyası, duplicate prevention, RBAC, 24 saat redaktə pəncərəsi və audit.
-- Frontend: `/reviews`, dashboard keçidi, şirkət rolu üzrə yazma icazəsinin göstərilməsi.
+- Frontend: `/reviews`, dashboard keçidi, şirkət rolu üzrə yazma icazəsinin göstərilməsi və çatdırılmalar üzrə server-side səhifələmə. UI hər səhifədə maksimum 100 çatdırılma sorğulamalı; bütün qalan səhifələri paralel şəkildə çağırmamalıdır.
 - Quality gates: backend regression, PostgreSQL migration smoke, frontend production build/security audit və repository hygiene.
 - Merge hələ edilməyib; yekun CI və manual acceptance təsdiqindən sonra ayrıca nəzərdən keçiriləcək.
