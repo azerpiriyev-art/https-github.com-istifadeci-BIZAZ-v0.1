@@ -311,3 +311,99 @@ def test_receiving_counts_cancelled_delivery_quantity(po_contract_db):
     ).fetchone()[0]
 
     assert result == "RECEIVED"
+
+
+def test_delivery_completion_does_not_count_other_in_transit_quantities(
+    po_contract_db,
+):
+    conn, refs = po_contract_db
+
+    po_id = _create_po(conn, refs, "APPROVED")
+    po_item_id = _create_po_item(
+        conn, refs, po_id, Decimal("1.0000")
+    )
+
+    # A separate delivery remains IN_TRANSIT with 0.6000.
+    transit_delivery = _create_delivery(conn, refs, po_id)
+    _add_delivery_item(
+        conn, po_id, po_item_id, transit_delivery, "0.6000"
+    )
+    _advance_delivery(
+        conn,
+        transit_delivery,
+        ("DISPATCHED", "IN_TRANSIT"),
+        refs["user_id"],
+    )
+
+    # The candidate delivery records only 0.4000.
+    candidate_delivery = _create_delivery(conn, refs, po_id)
+    _add_delivery_item(
+        conn, po_id, po_item_id, candidate_delivery, "0.4000"
+    )
+    _advance_delivery(
+        conn,
+        candidate_delivery,
+        ("DISPATCHED", "IN_TRANSIT"),
+        refs["user_id"],
+    )
+
+    # Other IN_TRANSIT quantities must not make this delivery complete.
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with conn.transaction():
+            conn.execute(
+                """
+                UPDATE deliveries
+                SET status = 'DELIVERED',
+                    delivered_at = now(),
+                    received_by = %s,
+                    updated_at = now()
+                WHERE id = %s
+                """,
+                (refs["user_id"], candidate_delivery),
+            )
+
+
+def test_partial_delivery_does_not_count_other_in_transit_quantities(
+    po_contract_db,
+):
+    conn, refs = po_contract_db
+
+    po_id = _create_po(conn, refs, "APPROVED")
+    po_item_id = _create_po_item(
+        conn, refs, po_id, Decimal("1.0000")
+    )
+
+    # Another delivery has quantity but has not left IN_TRANSIT.
+    transit_delivery = _create_delivery(conn, refs, po_id)
+    _add_delivery_item(
+        conn, po_id, po_item_id, transit_delivery, "0.6000"
+    )
+    _advance_delivery(
+        conn,
+        transit_delivery,
+        ("DISPATCHED", "IN_TRANSIT"),
+        refs["user_id"],
+    )
+
+    # This delivery contains no delivery items.
+    candidate_delivery = _create_delivery(conn, refs, po_id)
+    _advance_delivery(
+        conn,
+        candidate_delivery,
+        ("DISPATCHED", "IN_TRANSIT"),
+        refs["user_id"],
+    )
+
+    # An unrelated IN_TRANSIT quantity must not satisfy the
+    # PARTIALLY_DELIVERED requirement for this delivery.
+    with pytest.raises(psycopg.errors.CheckViolation):
+        with conn.transaction():
+            conn.execute(
+                """
+                UPDATE deliveries
+                SET status = 'PARTIALLY_DELIVERED',
+                    updated_at = now()
+                WHERE id = %s
+                """,
+                (candidate_delivery,),
+            )
