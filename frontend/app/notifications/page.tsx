@@ -146,7 +146,11 @@ export default function NotificationsPage() {
         { method: "PATCH" },
       );
       setNotice("Bildiriş oxunmuş kimi işarələndi.");
-      await loadNotifications();
+      if (unreadOnly && items.length === 1 && page > 1) {
+        setPage((current) => Math.max(1, current - 1));
+      } else {
+        await loadNotifications();
+      }
     } catch (markError) {
       const apiError = markError as ApiError;
       if (apiError.status === 401 || apiError.status === 403) {
