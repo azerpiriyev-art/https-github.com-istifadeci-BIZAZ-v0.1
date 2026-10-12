@@ -14,7 +14,7 @@ Status: feature implementation draft; tətbiq yalnız release/merge-dən sonra c
 
 1. Layihə buraxıldıqdan sonra server administratoru Task Scheduler-də gündəlik task yaradır.
 2. Program: `C:\Projects\BIZAZ-v0.1\backend\venv\Scripts\python.exe`
-3. Arguments: `C:\Projects\BIZAZ-v0.1\backend\scripts\purge_expired_notifications.py`
+3. Arguments: -m scripts.purge_expired_notifications
 4. Start in: `C:\Projects\BIZAZ-v0.1\backend`
 5. Gündə bir dəfə, aşağı yüklü vaxtda başladın. Dəqiq saat deployment runbook-da təsdiqlənməli və seçilmiş server timezone-u ilə sənədləşdirilməlidir.
 6. Task yalnız DB-yə tələb olunan icazəsi olan ayrıca servis hesabı altında işləməlidir. Heç bir parol/secret task argument-lərində saxlanmamalıdır; DB connection mövcud server secret/config mexanizmi ilə təmin olunmalıdır.
