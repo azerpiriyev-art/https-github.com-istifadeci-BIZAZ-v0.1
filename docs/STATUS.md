@@ -23,7 +23,7 @@
 | Payments | 🟢 Implemented | Payment Engine is implemented with payment creation/status APIs, RBAC, controlled state transitions, duplicate-reference protection, payment limits, audit logging, and approval integration; payment acceptance coverage is verified. | Maintain payment controls and acceptance coverage. |
 | Delivery | **Implemented / merged / PASS** | `/deliveries` frontend, dashboard navigation, company-scoped active-member API, explicit API guard for DELIVERED/CANCELLED item writes, corrupted-unit fallback, and full API-reported pagination are in `master`. Browser acceptance and local/backend CI regressions passed; no migration was added. | Maintain delivery state, tenant, and quantity regression gates. |
 | Reviews / Ratings | **Implemented / merged / PASS** | PR #2 merged to `master` at `4f73696`; local browser create/list/edit acceptance passed; batch summary returned HTTP 200; post-merge CI Run #111 passed all four gates with 221 backend tests. | Maintain tenant isolation, audit, and rate-limit regression gates. |
-| Notifications | **Implemented / local acceptance PASS; PR #4 open (Draft, not merged)** | Migration/model, tenant-scoped inbox APIs, transactional event hooks, acceptance tests, and Azerbaijani `/notifications` UI are implemented on `feature/basic-notifications`. Local browser list/unread/mark-read acceptance passed; the temporary UI test row was removed. Local backend regression: 228 passed; GitHub Actions run #149: all four gates passed. | Keep Notifications scope limited to migration 015; Delivery migration 016 is isolated in PR #5; merge only after explicit approval; configure and verify the daily 180-day purge task on the deployment host. |
+| Notifications | **Implemented / local acceptance PASS; PR #4 open (Draft, not merged)** | Migration/model, tenant-scoped inbox APIs, transactional event hooks, acceptance tests, and Azerbaijani `/notifications` UI are implemented on `feature/basic-notifications`. Local browser list/unread/mark-read acceptance passed; the temporary UI test row was removed. Local backend regression: 228 passed; GitHub Actions run #153: all four gates passed. | Keep Notifications scope limited to migration 015; Delivery migration 016 is isolated in PR #5; merge only after explicit approval; configure and verify the daily 180-day purge task on the deployment host. |
 | KPI Dashboard | Planned | Not implemented in the current baseline. | Start after the Basic Notifications slice, per MVP sequence. |
 | Automated Testing / CI | **PASS** | GitHub Actions Run #74 for merge commit `0ca7a9b`: **211 backend tests passed**, PostgreSQL migration smoke check, frontend production build/security audit, and repository hygiene all passed. | Maintain all four gates on every change. |
 | Production Operations & Governance (4.18–4.22.9) | рџџў PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
@@ -372,8 +372,11 @@ Implemented scope: tenant-scoped notification storage and APIs, unread count, id
 
 Verification evidence:
 - Local backend regression: 228 passed; 59 dependency deprecation warnings, no test failures.
-- GitHub Actions run #149: PostgreSQL migration smoke check, repository hygiene, backend regression, and frontend production build all passed.
-- Local browser acceptance: notification display, Azerbaijani text, unread count, mark-as-read, and database read-state verification passed.
+- GitHub Actions run #153: PostgreSQL migration smoke check, repository hygiene, backend regression, and frontend production build all passed.
+- Local browser acceptance: notification display, Azerbaijani text, unread count, and mark-as-read passed.
+- Pagination acceptance: 21 unread test notifications produced page 1/2; marking the last item read returned the UI to page 1/1 with 20 unread. Database read-state confirmed 20 unread and 1 read.
+- Pagination test cleanup: 21 temporary notification rows and 3 associated test audit rows deleted; marker and target account notification counts verified as 0.
+- Local frontend production build: PASS.
 - Migration 015 was applied to the local `bizaz` database after backup; the temporary UI acceptance notification was removed.
 - Retention script module-mode smoke test passed against `bizaz_procurement_test`; no expired rows were deleted.
 
