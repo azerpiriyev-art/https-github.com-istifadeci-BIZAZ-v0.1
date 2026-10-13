@@ -124,6 +124,21 @@ Constraints and indexes:
 - [ ] Azerbaijani UI loading/empty/error/read/unread halları ilə browser acceptance keçir.
 - [ ] Full backend regression, PostgreSQL migration smoke, frontend production build/security audit, repository hygiene — dörd CI gate-in hamısı keçir.
 
+### Avtomatlaşdırılmış biznes-hadisə testləri
+
+Əlavə qəbul testləri `backend/tests/test_notification_business_events_acceptance.py` faylında saxlanılır:
+
+- `test_approval_decision_notifies_requester_once` — qərarın sorğunu yaradan şəxsə göndərilməsi, hadisə açarı, actor exclusion və yekun qərarın təkrar qəbul edilməməsi.
+- `test_supplier_offer_submission_notifies_company_role_once` — təqdim edilmiş təklif üçün rol əsaslı alıcı, actor exclusion və hadisə açarı.
+- `test_delivery_status_change_notifies_company_role_once` — çatdırılma statusu dəyişikliyi, actor exclusion, hadisə açarı və eyni status keçidinin rədd edilməsi.
+- `test_payment_status_change_notifies_finance_once` — ödəniş statusu dəyişikliyi, FINANCE alıcısı, actor exclusion, hadisə açarı və eyni status keçidinin rədd edilməsi.
+
+Birgə son lokal sınaq nəticəsi: **9 passed**, 59 `slowapi`/Python deprecation warning, 3.41 saniyə. Bu nəticə dörd yeni testin və əvvəlki beş bildiriş testinin həmin anda uğurla keçdiyini göstərir.
+
+Testləri icra edərkən `BIZAZ_TEST_BASE_URL` yalnız təsdiqlənmiş test bazasına qoşulan API serverini göstərməlidir. `8001` portundakı API-nin `.env` vasitəsilə əsas `bizaz` bazasına qoşulduğu hallarda bu testlər həmin serverə yönəldilməməlidir.
+
+Bu test dəsti bütün qəbul meyarlarının tamamlandığını sübut etmir. Hadisələrin rollback/failure yolları, ardıcıl təsdiqdə gələcək step-lərin vaxtından əvvəl bildiriş almaması, bütün retry ssenariləri, tam browser acceptance və bu dəyişiklikdən sonrakı CI nəticələri ayrıca yoxlanmalıdır. Bölmə 9-dakı yoxlama işarələri bu mərhələdə dəyişdirilmir.
+
 ## 10. Scope-dan kənar
 
 - E-mail/SMS/push/WhatsApp/real-time WebSocket.
