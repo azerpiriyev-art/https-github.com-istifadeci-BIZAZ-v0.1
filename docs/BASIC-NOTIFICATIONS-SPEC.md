@@ -132,12 +132,18 @@ Constraints and indexes:
 - `test_supplier_offer_submission_notifies_company_role_once` — təqdim edilmiş təklif üçün rol əsaslı alıcı, actor exclusion və hadisə açarı.
 - `test_delivery_status_change_notifies_company_role_once` — çatdırılma statusu dəyişikliyi, actor exclusion, hadisə açarı və eyni status keçidinin rədd edilməsi.
 - `test_payment_status_change_notifies_finance_once` — ödəniş statusu dəyişikliyi, FINANCE alıcısı, actor exclusion, hadisə açarı və eyni status keçidinin rədd edilməsi.
+- `test_sequential_approval_notifies_only_next_eligible_step` — iki addımlı SEQUENTIAL təsdiqdə ikinci təsdiqləyicinin ilk qərardan əvvəl bildiriş almaması və qərar verə bilməməsi; ilk addım tamamlandıqdan sonra növbəti bildirişin yaranması.
+- `test_notification_insert_failure_rolls_back_purchase_order_and_audit` — Purchase Order status dəyişikliyində bildiriş yazılması uğursuz olduqda statusun DRAFT qalması, audit və bildiriş qeydlərinin yaranmaması, müvəqqəti trigger/funksiyanın silinməsi.
 
-Birgə son lokal sınaq nəticəsi: **9 passed**, 59 `slowapi`/Python deprecation warning, 3.41 saniyə. Bu nəticə dörd yeni testin və əvvəlki beş bildiriş testinin həmin anda uğurla keçdiyini göstərir.
+Birgə lokal acceptance nəticəsi (iki bildiriş test faylı): **11 passed**, 59 `slowapi`/Python deprecation warning, 4.22 saniyə; nəticəyə əvvəlki beş bildiriş testi və altı biznes-hadisə testi daxildir.
+
+Tam lokal backend regresiyası: **232 passed**, 59 deprecation warning, 31.58 saniyə.
+
+Test təmizliyi yoxlamasında `bizaz_procurement_test` bazasında işarələnmiş test istifadəçiləri, sifarişlər, təkliflər, çatdırılmalar və müvəqqəti trigger/funksiyalar üzrə qalıq sayı **0** təsdiqləndi. Bunlar lokal nəticələrdir; yeni iki test əlavə edildikdən sonra GitHub Actions CI hələ təkrar icra edilməyib.
 
 Testləri icra edərkən `BIZAZ_TEST_BASE_URL` yalnız təsdiqlənmiş test bazasına qoşulan API serverini göstərməlidir. `8001` portundakı API-nin `.env` vasitəsilə əsas `bizaz` bazasına qoşulduğu hallarda bu testlər həmin serverə yönəldilməməlidir.
 
-Bu test dəsti bütün qəbul meyarlarının tamamlandığını sübut etmir. Hadisələrin rollback/failure yolları, ardıcıl təsdiqdə gələcək step-lərin vaxtından əvvəl bildiriş almaması, bütün retry ssenariləri, tam browser acceptance və bu dəyişiklikdən sonrakı CI nəticələri ayrıca yoxlanmalıdır. Bölmə 9-dakı yoxlama işarələri bu mərhələdə dəyişdirilmir.
+Bu test dəsti bütün qəbul meyarlarının tamamlandığını sübut etmir. İki addımlı SEQUENTIAL approval ssenarisi və Purchase Order status dəyişikliyi zamanı notification insert failure üçün rollback lokalda yoxlanıb. Digər event-lərin rollback/failure yolları, bütün retry ssenariləri, tam browser acceptance və deployment host-da gündəlik purge tapşırığının faktiki quraşdırılması/canlı sınağı açıq qalır. Bu yeni lokal dəyişikliklər üzrə GitHub Actions CI hələ təkrar icra edilməyib. Bölmə 9-dakı yoxlama işarələri bu mərhələdə dəyişdirilmir.
 
 ## 10. Scope-dan kənar
 

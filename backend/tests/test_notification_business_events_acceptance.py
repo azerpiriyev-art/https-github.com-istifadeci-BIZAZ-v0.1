@@ -545,3 +545,358 @@ def test_payment_status_change_notifies_finance_once(
             payment_id=payment_id,
         )
         _cleanup_notification_member(test_db, company_id, recipient_id)
+
+
+def test_sequential_approval_notifies_only_next_eligible_step(
+    base_url, auth_headers, test_company_data, test_db
+):
+    company_id = uuid.UUID(test_company_data["company_id"])
+    requester_id = uuid.UUID(test_company_data["user_id"])
+    first_approver_id = None
+    second_approver_id = None
+    po_id = None
+    approval_id = None
+
+    try:
+        first_approver_id, first_email, first_password = (
+            _insert_notification_member(test_db, company_id, "PROCUREMENT")
+        )
+        second_approver_id, second_email, second_password = (
+            _insert_notification_member(test_db, company_id, "PROCUREMENT")
+        )
+
+        po = _create_notification_test_po(
+            base_url, auth_headers, test_company_data
+        )
+        po_id = uuid.UUID(po["id"])
+
+        create_response = requests.post(
+            f"{base_url}/api/v1/approvals/requests",
+            headers=auth_headers,
+            json={
+                "entity_type": "PURCHASE_ORDER",
+                "entity_id": str(po_id),
+                "execution_mode": "SEQUENTIAL",
+                "decision_mode": "ALL",
+                "priority": "NORMAL",
+                "steps": [
+                    {
+                        "step_order": 1,
+                        "approver_user_id": str(first_approver_id),
+                    },
+                    {
+                        "step_order": 2,
+                        "approver_user_id": str(second_approver_id),
+                    },
+                ],
+            },
+            timeout=15,
+        )
+        assert create_response.status_code == 201, create_response.text
+        approval_id = uuid.UUID(create_response.json()["id"])
+
+        step_rows = test_db.execute(
+            """
+            SELECT id, step_order, approver_user_id, status
+            FROM approval_steps
+            WHERE approval_request_id = %s
+            ORDER BY step_order
+            """,
+            (approval_id,),
+        ).fetchall()
+
+        assert len(step_rows) == 2
+        first_step_id = step_rows[0][0]
+        second_step_id = step_rows[1][0]
+
+        first_key = f"approval-action:{first_step_id}"
+        second_key = f"approval-action:{second_step_id}"
+
+        # On creation, only the first sequential step may be notified.
+        first_rows = _event_rows(
+            test_db, company_id, first_approver_id,
+            approval_id, "APPROVAL_ACTION_REQUIRED"
+        )
+        second_rows = _event_rows(
+            test_db, company_id, second_approver_id,
+            approval_id, "APPROVAL_ACTION_REQUIRED"
+        )
+        assert len(first_rows) == 1
+        assert first_rows[0][1] == first_key
+        assert len(second_rows) == 0
+
+        first_headers = _login_test_member(
+            base_url, first_email, first_password
+        )
+        second_headers = _login_test_member(
+            base_url, second_email, second_password
+        )
+
+        # The second approver must not be able to act before step 1.
+        premature = requests.post(
+            f"{base_url}/api/v1/approvals/{approval_id}/decision",
+            headers=second_headers,
+            json={"decision": "APPROVE"},
+            timeout=15,
+        )
+        assert premature.status_code == 403, premature.text
+
+        statuses = test_db.execute(
+            """
+            SELECT status
+            FROM approval_steps
+            WHERE approval_request_id = %s
+            ORDER BY step_order
+            """,
+            (approval_id,),
+        ).fetchall()
+        assert [row[0] for row in statuses] == ["PENDING", "PENDING"]
+
+        second_rows = _event_rows(
+            test_db, company_id, second_approver_id,
+            approval_id, "APPROVAL_ACTION_REQUIRED"
+        )
+        assert len(second_rows) == 0
+
+        first_decision = requests.post(
+            f"{base_url}/api/v1/approvals/{approval_id}/decision",
+            headers=first_headers,
+            json={"decision": "APPROVE"},
+            timeout=15,
+        )
+        assert first_decision.status_code == 200, first_decision.text
+        assert first_decision.json()["request"]["status"] == "IN_PROGRESS"
+
+        # Step 2 must become actionable only after step 1 succeeds.
+        first_rows_after = _event_rows(
+            test_db, company_id, first_approver_id,
+            approval_id, "APPROVAL_ACTION_REQUIRED"
+        )
+        second_rows_after = _event_rows(
+            test_db, company_id, second_approver_id,
+            approval_id, "APPROVAL_ACTION_REQUIRED"
+        )
+        assert len(first_rows_after) == 1
+        assert first_rows_after[0][1] == first_key
+        assert len(second_rows_after) == 1
+        assert second_rows_after[0][1] == second_key
+
+        requester_rows_after_first = _event_rows(
+            test_db, company_id, requester_id,
+            approval_id, "APPROVAL_DECISION_RECORDED"
+        )
+        assert len(requester_rows_after_first) == 1
+        assert requester_rows_after_first[0][1] == (
+            f"approval-decision:{first_step_id}"
+        )
+
+        second_decision = requests.post(
+            f"{base_url}/api/v1/approvals/{approval_id}/decision",
+            headers=second_headers,
+            json={"decision": "APPROVE"},
+            timeout=15,
+        )
+        assert second_decision.status_code == 200, second_decision.text
+        assert second_decision.json()["request"]["status"] == "APPROVED"
+
+        requester_rows_final = _event_rows(
+            test_db, company_id, requester_id,
+            approval_id, "APPROVAL_DECISION_RECORDED"
+        )
+        assert len(requester_rows_final) == 2
+        assert {row[1] for row in requester_rows_final} == {
+            f"approval-decision:{first_step_id}",
+            f"approval-decision:{second_step_id}",
+        }
+
+        first_rows_final = _event_rows(
+            test_db, company_id, first_approver_id,
+            approval_id, "APPROVAL_ACTION_REQUIRED"
+        )
+        second_rows_final = _event_rows(
+            test_db, company_id, second_approver_id,
+            approval_id, "APPROVAL_ACTION_REQUIRED"
+        )
+        assert len(first_rows_final) == 1
+        assert len(second_rows_final) == 1
+
+    finally:
+        if approval_id is not None:
+            test_db.execute(
+                "DELETE FROM notifications WHERE company_id = %s AND source_entity_id = %s",
+                (company_id, approval_id),
+            )
+            test_db.execute(
+                "DELETE FROM audit_log WHERE entity_id = %s",
+                (approval_id,),
+            )
+            test_db.execute(
+                "DELETE FROM approval_steps WHERE approval_request_id = %s",
+                (approval_id,),
+            )
+            test_db.execute(
+                "DELETE FROM approval_requests WHERE id = %s",
+                (approval_id,),
+            )
+
+        _cleanup_notification_test_po(test_db, company_id, po_id)
+        _cleanup_notification_member(test_db, company_id, first_approver_id)
+        _cleanup_notification_member(test_db, company_id, second_approver_id)
+
+
+
+def test_notification_insert_failure_rolls_back_purchase_order_and_audit(
+    base_url, auth_headers, test_company_data, test_db
+):
+    from psycopg import sql
+
+    company_id = uuid.UUID(test_company_data["company_id"])
+    recipient_id = None
+    po_id = None
+    function_name = None
+    trigger_name = None
+    function_created = False
+    trigger_created = False
+
+    try:
+        # Ensure that a notification recipient exists for the status event.
+        recipient_id, _, _ = _insert_notification_member(
+            test_db, company_id, "PROCUREMENT"
+        )
+
+        po = _create_notification_test_po(
+            base_url, auth_headers, test_company_data
+        )
+        po_id = uuid.UUID(po["id"])
+
+        # Fail only notification inserts for this test purchase order.
+        suffix = uuid.uuid4().hex[:12]
+        function_name = f"bizaz_test_notif_fail_{suffix}_fn"
+        trigger_name = f"bizaz_test_notif_fail_{suffix}_trg"
+
+        test_db.execute(
+            sql.SQL("""
+                CREATE FUNCTION {}()
+                RETURNS trigger
+                LANGUAGE plpgsql
+                AS $body$
+                BEGIN
+                    IF NEW.source_entity_id = {}::uuid
+                       AND NEW.event_type = 'PURCHASE_ORDER_STATUS_CHANGED'
+                    THEN
+                        RAISE EXCEPTION
+                            'intentional notification failure acceptance test';
+                    END IF;
+                    RETURN NEW;
+                END;
+                $body$;
+            """).format(
+                sql.Identifier(function_name),
+                sql.Literal(str(po_id)),
+            )
+        )
+        function_created = True
+
+        test_db.execute(
+            sql.SQL("""
+                CREATE TRIGGER {}
+                BEFORE INSERT ON notifications
+                FOR EACH ROW
+                EXECUTE FUNCTION {}()
+            """).format(
+                sql.Identifier(trigger_name),
+                sql.Identifier(function_name),
+            )
+        )
+        trigger_created = True
+
+        trigger_exists = test_db.execute(
+            """
+            SELECT EXISTS (
+                SELECT 1
+                FROM pg_trigger
+                WHERE tgname = %s
+                  AND NOT tgisinternal
+            )
+            """,
+            (trigger_name,),
+        ).fetchone()[0]
+        assert trigger_exists, "Failure trigger yaradılmadı."
+
+        # The status and audit changes must roll back if notification
+        # insertion fails within the same database transaction.
+        response = requests.post(
+            f"{base_url}/api/v1/purchase-orders/{po_id}/status",
+            headers=auth_headers,
+            json={"status": "SUBMITTED"},
+            timeout=15,
+        )
+        assert response.status_code == 500, (
+            f"Gözlənilən 500 alınmadı: {response.status_code} {response.text}"
+        )
+
+        status_row = test_db.execute(
+            """
+            SELECT status
+            FROM purchase_orders
+            WHERE id = %s AND company_id = %s
+            """,
+            (po_id, company_id),
+        ).fetchone()
+        assert status_row is not None
+        assert status_row[0] == "DRAFT", (
+            f"Status rollback edilmədi: {status_row[0]}"
+        )
+
+        audit_count = test_db.execute(
+            """
+            SELECT count(*)
+            FROM audit_log
+            WHERE company_id = %s
+              AND entity_id = %s
+              AND action = 'PURCHASE_ORDER_STATUS_CHANGED'
+            """,
+            (company_id, po_id),
+        ).fetchone()[0]
+        assert audit_count == 0, (
+            f"Rollback-dan sonra {audit_count} audit qeydi qalıb."
+        )
+
+        notification_count = test_db.execute(
+            """
+            SELECT count(*)
+            FROM notifications
+            WHERE company_id = %s
+              AND source_entity_id = %s
+              AND event_type = 'PURCHASE_ORDER_STATUS_CHANGED'
+            """,
+            (company_id, po_id),
+        ).fetchone()[0]
+        assert notification_count == 0, (
+            f"Rollback-dan sonra {notification_count} bildiriş qalıb."
+        )
+
+    finally:
+        # Always remove the temporary trigger/function before cleaning data.
+        try:
+            if trigger_created:
+                test_db.execute(
+                    sql.SQL("DROP TRIGGER IF EXISTS {} ON notifications").format(
+                        sql.Identifier(trigger_name)
+                    )
+                )
+        finally:
+            try:
+                if function_created:
+                    test_db.execute(
+                        sql.SQL("DROP FUNCTION IF EXISTS {}()").format(
+                            sql.Identifier(function_name)
+                        )
+                    )
+            finally:
+                try:
+                    _cleanup_notification_test_po(test_db, company_id, po_id)
+                finally:
+                    _cleanup_notification_member(
+                        test_db, company_id, recipient_id
+                    )
