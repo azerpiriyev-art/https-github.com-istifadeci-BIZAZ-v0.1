@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState, type CSSProperties } from "react";
+import { FormEvent, useCallback, useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
-const API_URL = "http://127.0.0.1:8001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001";
 const TOKEN_KEY = "bizaz_token";
 const NEED_STORAGE_KEY = "bizaz_current_need";
 const APPROVAL_STORAGE_KEY = "bizaz_current_need_approval";
@@ -171,31 +171,7 @@ export default function NewNeedPage() {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  useEffect(() => {
-    const token = localStorage.getItem(TOKEN_KEY);
-    if (!token) {
-      router.replace("/login");
-      return;
-    }
-
-    void loadProducts();
-
-    const savedNeed = localStorage.getItem(NEED_STORAGE_KEY);
-    if (savedNeed) {
-      try {
-        setCurrentNeed(JSON.parse(savedNeed) as NeedResponse);
-      } catch {
-        localStorage.removeItem(NEED_STORAGE_KEY);
-      }
-    }
-
-    const savedApproval = localStorage.getItem(APPROVAL_STORAGE_KEY);
-    if (savedApproval) {
-      void loadApproval(savedApproval);
-    }
-  }, [router]);
-
-  async function loadProducts() {
+  const loadProducts = useCallback(async () => {
     setLoadingProducts(true);
     setError("");
 
@@ -236,9 +212,9 @@ export default function NewNeedPage() {
     } finally {
       setLoadingProducts(false);
     }
-  }
+  }, [router]);
 
-  async function loadApproval(approvalId: string) {
+  const loadApproval = useCallback(async (approvalId: string) => {
     setApprovalSaving(true);
 
     try {
@@ -277,7 +253,31 @@ export default function NewNeedPage() {
     } finally {
       setApprovalSaving(false);
     }
-  }
+  }, [router]);
+
+  useEffect(() => {
+    const token = localStorage.getItem(TOKEN_KEY);
+    if (!token) {
+      router.replace("/login");
+      return;
+    }
+
+    void loadProducts();
+
+    const savedNeed = localStorage.getItem(NEED_STORAGE_KEY);
+    if (savedNeed) {
+      try {
+        setCurrentNeed(JSON.parse(savedNeed) as NeedResponse);
+      } catch {
+        localStorage.removeItem(NEED_STORAGE_KEY);
+      }
+    }
+
+    const savedApproval = localStorage.getItem(APPROVAL_STORAGE_KEY);
+    if (savedApproval) {
+      void loadApproval(savedApproval);
+    }
+  }, [router, loadProducts, loadApproval]);
 
   function updateItem(index: number, field: keyof NeedItem, value: string) {
     setForm((current) => ({

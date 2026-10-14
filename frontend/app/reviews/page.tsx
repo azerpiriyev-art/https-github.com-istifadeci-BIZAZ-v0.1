@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState, type CSSProperties, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
-const API_URL = "http://127.0.0.1:8001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001";
 const TOKEN_KEY = "bizaz_token";
 
 type ApiError = Error & { status?: number };
@@ -35,16 +35,6 @@ type Review = {
   comment: string | null;
   created_at: string;
   updated_at: string;
-};
-
-type ReviewList = {
-  items: Review[];
-  total: number;
-  page: number;
-  limit: number;
-  pages: number;
-  average_rating: number | null;
-  rating_count: number;
 };
 
 type SupplierStats = {

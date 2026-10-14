@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState, type CSSProperties } from "react";
 import { useRouter } from "next/navigation";
 
-const API_URL = "http://127.0.0.1:8001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001";
 const TOKEN_KEY = "bizaz_token";
 
 type ApiError = Error & { status?: number };
@@ -90,6 +90,7 @@ export default function NotificationsPage() {
   const [loading, setLoading] = useState(true);
   const [markingId, setMarkingId] = useState("");
   const [error, setError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [notice, setNotice] = useState("");
 
   const loadNotifications = useCallback(async () => {
@@ -100,6 +101,7 @@ export default function NotificationsPage() {
     }
     setLoading(true);
     setError("");
+    setLoadError("");
     try {
       const [listing, unread] = await Promise.all([
         apiJson<NotificationPage>(
@@ -119,7 +121,7 @@ export default function NotificationsPage() {
         router.replace("/login");
         return;
       }
-      setError(apiError.message || "Bildirişləri yükləmək mümkün olmadı.");
+      setLoadError(apiError.message || "Bildirişləri yükləmək mümkün olmadı.");
     } finally {
       setLoading(false);
     }
@@ -193,14 +195,16 @@ export default function NotificationsPage() {
         <p style={{ color: "#555", marginTop: 8 }}>
           Şirkətiniz üzrə əməliyyat və təsdiq bildirişləri.
         </p>
-        <p style={{ marginTop: 8, fontWeight: 600 }}>
+        {!loading && !loadError && (
+          <p style={{ marginTop: 8, fontWeight: 600 }}>
           Oxunmamış bildiriş: {unreadCount}
-        </p>
+          </p>
+        )}
       </header>
 
-      {error && (
+      {(loadError || error) && (
         <p role="alert" style={{ background: "#fff0f0", color: "#a40000", padding: 12, borderRadius: 6 }}>
-          {error}
+          {loadError || error}
         </p>
       )}
       {notice && (
@@ -223,7 +227,7 @@ export default function NotificationsPage() {
 
       {loading ? (
         <p role="status">Bildirişlər yüklənir...</p>
-      ) : items.length === 0 ? (
+      ) : loadError ? null : items.length === 0 ? (
         <section style={cardStyle}>
           <p style={{ color: "#555" }}>
             {unreadOnly

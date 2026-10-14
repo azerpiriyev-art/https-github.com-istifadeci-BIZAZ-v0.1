@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const API_URL = "http://127.0.0.1:8001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001";
 
 type Product = {
   id: string;
@@ -56,23 +56,23 @@ export default function ProductsPage() {
     role === "ADMIN" ||
     role === "PROCUREMENT";
 
-  function getToken(): string | null {
+  const getToken = useCallback((): string | null => {
     if (typeof window === "undefined") {
       return null;
     }
 
     return localStorage.getItem("bizaz_token");
-  }
+  }, []);
 
-  function handleUnauthorized() {
+  const handleUnauthorized = useCallback(() => {
     localStorage.removeItem("bizaz_token");
     router.push("/login");
-  }
+  }, [router]);
 
-  async function apiRequest(
+  const apiRequest = useCallback(async (
     path: string,
     options: RequestInit = {}
-  ): Promise<Response> {
+  ): Promise<Response> => {
     const token = getToken();
 
     if (!token) {
@@ -96,9 +96,9 @@ export default function ProductsPage() {
     }
 
     return response;
-  }
+  }, [getToken, handleUnauthorized]);
 
-  async function loadCompany() {
+  const loadCompany = useCallback(async () => {
     try {
       const response = await apiRequest("/api/v1/company/me");
 
@@ -133,9 +133,9 @@ export default function ProductsPage() {
 
       console.error(err);
     }
-  }
+  }, [apiRequest]);
 
-  async function loadProducts() {
+  const loadProducts = useCallback(async () => {
     setLoading(true);
     setError("");
 
@@ -175,7 +175,7 @@ export default function ProductsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [apiRequest]);
 
   useEffect(() => {
     const token = getToken();
@@ -187,7 +187,7 @@ export default function ProductsPage() {
 
     loadCompany();
     loadProducts();
-  }, [router]);
+  }, [router, getToken, loadCompany, loadProducts]);
 
   function resetForm() {
     setForm(emptyForm);

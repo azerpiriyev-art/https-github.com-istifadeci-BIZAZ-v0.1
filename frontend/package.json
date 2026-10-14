@@ -5,7 +5,7 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "eslint app"
   },
   "dependencies": {
     "next": "15.5.27",
@@ -17,6 +17,8 @@
     "@types/node": "^24.3.0",
     "@types/react": "^19.1.10",
     "@types/react-dom": "^19.1.7",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^15.5.27",
     "tailwindcss": "^4.1.12",
     "typescript": "^5.9.2"
   },
