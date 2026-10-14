@@ -2,7 +2,7 @@
 
 ## Current baseline
 
-- Current `master` merge baseline: `4f7369663802bd49296055694b00bf34a7d8bbc9` (PR #2 merged; Review & Ratings included). Prior delivery-integration baseline remains PR #1 merge `0ca7a9b2b3d86a69a38c5ffefc007f739184b4e3`.
+- Current `master` merge baseline: `4f7369663802bd49296055694b00bf34a7d8bbc9` (PR #2 merged; Review & Ratings included). Current master documentation baseline: `848c866154c28858b30ada8f05920b061b333e8c`. Prior delivery-integration baseline remains PR #1 merge `0ca7a9b2b3d86a69a38c5ffefc007f739184b4e3`.
 - Local Windows checkout was fast-forwarded to `origin/master`; the working tree is clean after synchronization.
 - Local backend health returned `status=ok`, and OpenAPI exposed `POST /api/v1/reviews/summary` after the latest feature code was pulled and the backend restarted.
 - Local browser acceptance on the merged feature head: review creation and listing passed; rating edited from 5/5 to 4/5 and comment changed; the batch summary request returned HTTP 200.
@@ -23,7 +23,7 @@
 | Payments | 🟢 Implemented | Payment Engine is implemented with payment creation/status APIs, RBAC, controlled state transitions, duplicate-reference protection, payment limits, audit logging, and approval integration; payment acceptance coverage is verified. | Maintain payment controls and acceptance coverage. |
 | Delivery | **Implemented / merged / PASS** | `/deliveries` frontend, dashboard navigation, company-scoped active-member API, explicit API guard for DELIVERED/CANCELLED item writes, corrupted-unit fallback, and full API-reported pagination are in `master`. Browser acceptance and local/backend CI regressions passed; no migration was added. | Maintain delivery state, tenant, and quantity regression gates. |
 | Reviews / Ratings | **Implemented / merged / PASS** | PR #2 merged to `master` at `4f73696`; local browser create/list/edit acceptance passed; batch summary returned HTTP 200; post-merge CI Run #111 passed all four gates with 221 backend tests. | Maintain tenant isolation, audit, and rate-limit regression gates. |
-| Notifications | Planned | Not implemented in the current baseline. | 4.23.16 — define notification contract and implement in-app MVP. |
+| Notifications | **Implemented / local acceptance PASS; PR #4 open (Draft, not merged)** | Migration/model, tenant-scoped inbox APIs, transactional event hooks, acceptance tests, and Azerbaijani `/notifications` UI are implemented on `feature/basic-notifications`. Local browser list/unread/mark-read acceptance passed; the temporary UI test row was removed. Local backend regression: 228 passed; GitHub Actions run #153: all four gates passed. | Keep Notifications scope limited to migration 015; Delivery migration 016 is isolated in PR #5; merge only after explicit approval; configure and verify the daily 180-day purge task on the deployment host. |
 | KPI Dashboard | Planned | Not implemented in the current baseline. | Start after the Basic Notifications slice, per MVP sequence. |
 | Automated Testing / CI | **PASS** | GitHub Actions Run #74 for merge commit `0ca7a9b`: **211 backend tests passed**, PostgreSQL migration smoke check, frontend production build/security audit, and repository hygiene all passed. | Maintain all four gates on every change. |
 | Production Operations & Governance (4.18–4.22.9) | рџџў PASS | Backup, monitoring, DR, incident response, RPO/RTO, audit evidence, and change-control procedures are documented; final baseline is committed. | Execute live pre-change checks. |
@@ -364,6 +364,25 @@ Acceptance evidence:
 - Latest post-merge CI Run #111: all four gates passed; backend regression **221 passed**, 56 dependency deprecation warnings, no failures.
 - Codex review of the latest feature head found no major issues; both rate-limit findings were addressed and resolved.
 
-## Next planned slice — 4.23.16 Basic Notifications
+## 4.23.16 - Basic Notifications release review
 
-Status: Planned; not implemented. Define event triggers and tenant-scoped recipients, in-app delivery, unread state, read actions, idempotency, retention, and audit/privacy rules before implementation. KPI Dashboard follows the notification slice.
+Status: Implementation complete for local acceptance; PR #4 remains Draft and unmerged.
+
+Implemented scope: tenant-scoped notification storage and APIs, unread count, idempotent mark-as-read, transactional event notifications, Azerbaijani inbox UI, and the 180-day retention purge script.
+
+Verification evidence:
+- Local backend regression: 228 passed; 59 dependency deprecation warnings, no test failures.
+- GitHub Actions run #153: PostgreSQL migration smoke check, repository hygiene, backend regression, and frontend production build all passed.
+- Local browser acceptance: notification display, Azerbaijani text, unread count, and mark-as-read passed.
+- Pagination acceptance: 21 unread test notifications produced page 1/2; marking the last item read returned the UI to page 1/1 with 20 unread. Database read-state confirmed 20 unread and 1 read.
+- Pagination test cleanup: 21 temporary notification rows and 3 associated test audit rows deleted; marker and target account notification counts verified as 0.
+- Local frontend production build: PASS.
+- Migration 015 was applied to the local `bizaz` database after backup; the temporary UI acceptance notification was removed.
+- Retention script module-mode smoke test passed against `bizaz_procurement_test`; no expired rows were deleted.
+
+Release gates still open:
+- Delivery migration 016 and its two contract tests are now isolated in PR #5; PR #4 contains Notifications migration 015 only.
+- Obtain explicit approval before merging PR #4.
+- Register and verify the daily retention task on the deployment host after release; this task is not yet confirmed as installed.
+
+Continue to the KPI Dashboard slice only after the notifications release is approved and completed.

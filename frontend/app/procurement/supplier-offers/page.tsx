@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
-const API_URL = "http://127.0.0.1:8001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001";
 
 type Supplier = {
   id: string;
@@ -79,11 +79,7 @@ export default function SupplierOffersPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
 
-  useEffect(() => {
-    void loadInitialData();
-  }, []);
-
-  async function getToken() {
+  const getToken = useCallback(async () => {
     const token = localStorage.getItem("bizaz_token");
 
     if (!token) {
@@ -91,9 +87,9 @@ export default function SupplierOffersPage() {
     }
 
     return token;
-  }
+  }, []);
 
-  async function loadInitialData() {
+  const loadInitialData = useCallback(async () => {
     setLoading(true);
     setError("");
 
@@ -144,7 +140,11 @@ export default function SupplierOffersPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [getToken]);
+
+  useEffect(() => {
+    void loadInitialData();
+  }, [loadInitialData]);
 
   async function loadRequestDetail(requestId: string) {
     setSelectedRequestId(requestId);

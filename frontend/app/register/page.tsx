@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
@@ -11,13 +11,13 @@ export default function RegisterPage() {
   const [responseMsg, setResponseMsg] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleSubmit = async (e: any) => {
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setLoading(true);
     setResponseMsg("");
 
     try {
-      const res = await fetch("http://127.0.0.1:8001/api/v1/register", {
+      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001"}/api/v1/register`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -25,14 +25,14 @@ export default function RegisterPage() {
         body: JSON.stringify(formData),
       });
 
-      const data = await res.json();
+      await res.json();
 
       if (res.ok) {
         setResponseMsg("Uğurlu qeydiyyat baş tutdu!");
       } else {
         setResponseMsg("Xəta: Məlumatlar düzgün deyil");
       }
-    } catch (err) {
+    } catch {
       setResponseMsg("Serverlə əlaqə saxlanıla bilmədi.");
     } finally {
       setLoading(false);

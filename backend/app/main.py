@@ -14,11 +14,12 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
 from sqlalchemy.exc import DataError, IntegrityError
 from sqlalchemy import select, func, or_
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from .config import settings
 from .database import get_db
-from .models import ApprovalRequest, ApprovalStep, AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Payment, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User, Delivery, DeliveryItem, Review
+from .models import ApprovalRequest, ApprovalStep, AuditLog, Company, CompanyMember, Need, NeedItem, NeedPRConversion, OfferSelection, Payment, Product, ProductPrice, PurchaseOrder, PurchaseOrderItem, PurchaseRequest, PurchaseRequestItem, Supplier, SupplierOffer, SupplierOfferItem, User, Delivery, DeliveryItem, Review, Notification
 
 
 # ============================================================
@@ -1162,6 +1163,170 @@ def get_current_membership(
         )
 
     return membership
+
+
+NOTIFICATION_EVENT_TYPES = {
+    "APPROVAL_ACTION_REQUIRED",
+    "APPROVAL_DECISION_RECORDED",
+    "PURCHASE_REQUEST_STATUS_CHANGED",
+    "SUPPLIER_OFFER_SUBMITTED",
+    "PURCHASE_ORDER_STATUS_CHANGED",
+    "DELIVERY_STATUS_CHANGED",
+    "PAYMENT_STATUS_CHANGED",
+}
+
+
+def _active_company_recipient_ids(
+    db: Session,
+    company_id: uuid.UUID,
+    *,
+    user_ids: list[uuid.UUID] | None = None,
+    roles: set[str] | None = None,
+    exclude_user_id: uuid.UUID | None = None,
+) -> list[uuid.UUID]:
+    statement = (
+        select(CompanyMember.user_id)
+        .join(User, User.id == CompanyMember.user_id)
+        .where(
+            CompanyMember.company_id == company_id,
+            User.is_active.is_(True),
+        )
+        .distinct()
+    )
+    if user_ids is not None:
+        if not user_ids:
+            return []
+        statement = statement.where(CompanyMember.user_id.in_(set(user_ids)))
+    if roles:
+        statement = statement.where(CompanyMember.role.in_(roles))
+    if exclude_user_id is not None:
+        statement = statement.where(CompanyMember.user_id != exclude_user_id)
+    return list(db.scalars(statement).all())
+
+
+def _queue_notifications(
+    db: Session,
+    *,
+    company_id: uuid.UUID,
+    recipient_ids: list[uuid.UUID],
+    event_type: str,
+    title: str,
+    body: str,
+    source_entity_type: str,
+    source_entity_id: uuid.UUID,
+    source_event_key: str,
+) -> None:
+    if event_type not in NOTIFICATION_EVENT_TYPES:
+        raise ValueError(f"Unsupported notification event type: {event_type}")
+    if not recipient_ids:
+        return
+
+    active_ids = _active_company_recipient_ids(
+        db,
+        company_id,
+        user_ids=list(set(recipient_ids)),
+    )
+    if not active_ids:
+        return
+
+    title = title.strip()
+    body = body.strip()
+    if not title or len(title) > 200:
+        raise ValueError("Notification title must contain 1..200 characters.")
+    if not body or len(body) > 1000:
+        raise ValueError("Notification body must contain 1..1000 characters.")
+    if len(source_event_key) > 180:
+        raise ValueError("Notification source_event_key exceeds 180 characters.")
+
+    rows = [
+        {
+            "company_id": company_id,
+            "recipient_user_id": recipient_id,
+            "event_type": event_type,
+            "title": title,
+            "body": body,
+            "source_entity_type": source_entity_type,
+            "source_entity_id": source_entity_id,
+            "source_event_key": source_event_key,
+        }
+        for recipient_id in set(active_ids)
+    ]
+
+    # Insert inside the caller's current transaction. The unique key and
+    # ON CONFLICT make event retries idempotent without poisoning the source
+    # business transaction with a duplicate-key exception.
+    db.execute(
+        pg_insert(Notification)
+        .values(rows)
+        .on_conflict_do_nothing(
+            constraint="uq_notifications_source_event_recipient"
+        )
+    )
+
+
+def _queue_role_notifications(
+    db: Session,
+    *,
+    company_id: uuid.UUID,
+    roles: set[str],
+    event_type: str,
+    title: str,
+    body: str,
+    source_entity_type: str,
+    source_entity_id: uuid.UUID,
+    source_event_key: str,
+    exclude_user_id: uuid.UUID | None = None,
+) -> None:
+    recipient_ids = _active_company_recipient_ids(
+        db,
+        company_id,
+        roles=roles,
+        exclude_user_id=exclude_user_id,
+    )
+    _queue_notifications(
+        db,
+        company_id=company_id,
+        recipient_ids=recipient_ids,
+        event_type=event_type,
+        title=title,
+        body=body,
+        source_entity_type=source_entity_type,
+        source_entity_id=source_entity_id,
+        source_event_key=source_event_key,
+    )
+
+
+def _queue_approval_action_notifications(
+    db: Session,
+    approval_request: ApprovalRequest,
+    steps: list[ApprovalStep],
+) -> None:
+    actionable_steps = _approval_eligible_steps(approval_request, steps)
+    entity_label = approval_request.entity_type.replace("_", " ").title()
+    for step in actionable_steps:
+        if step.approver_user_id is not None:
+            recipients = [step.approver_user_id]
+        elif step.approver_role:
+            recipients = _active_company_recipient_ids(
+                db,
+                approval_request.company_id,
+                roles={step.approver_role},
+            )
+        else:
+            recipients = []
+
+        _queue_notifications(
+            db,
+            company_id=approval_request.company_id,
+            recipient_ids=recipients,
+            event_type="APPROVAL_ACTION_REQUIRED",
+            title="Təsdiq tələb olunur",
+            body=f"{entity_label} üzrə təsdiq addımı sizin qərarınızı gözləyir.",
+            source_entity_type="APPROVAL_REQUEST",
+            source_entity_id=approval_request.id,
+            source_event_key=f"approval-action:{step.id}",
+        )
+
 
 
 def product_response(product: Product) -> dict:
@@ -2870,6 +3035,20 @@ def create_supplier_offer(
         )
     )
 
+    if supplier_offer.status == "SUBMITTED":
+        _queue_role_notifications(
+            db,
+            company_id=membership.company_id,
+            roles={"OWNER", "ADMIN", "PROCUREMENT"},
+            event_type="SUPPLIER_OFFER_SUBMITTED",
+            title="Təchizatçı təklifi təqdim edildi",
+            body=f"Təklif {supplier_offer.offer_number} təqdim edildi.",
+            source_entity_type="SUPPLIER_OFFER",
+            source_entity_id=supplier_offer.id,
+            source_event_key=f"supplier-offer-submitted:{supplier_offer.id}",
+            exclude_user_id=current_user.id,
+        )
+
     try:
         db.commit()
         db.refresh(supplier_offer)
@@ -4153,6 +4332,13 @@ def create_approval_request(
         )
     )
 
+    notification_steps = db.scalars(
+        select(ApprovalStep)
+        .where(ApprovalStep.approval_request_id == approval_request.id)
+        .order_by(ApprovalStep.step_order)
+    ).all()
+    _queue_approval_action_notifications(db, approval_request, notification_steps)
+
     try:
         db.commit()
     except IntegrityError:
@@ -4509,6 +4695,20 @@ def decide_approval(
         )
     )
 
+    if approval_request.requested_by != current_user.id:
+        _queue_notifications(
+            db,
+            company_id=membership.company_id,
+            recipient_ids=[approval_request.requested_by],
+            event_type="APPROVAL_DECISION_RECORDED",
+            title="Approval qərarı qeydə alındı",
+            body=f"Təsdiq sorğusu üzrə qərar: {payload.decision}.",
+            source_entity_type="APPROVAL_REQUEST",
+            source_entity_id=approval_request.id,
+            source_event_key=f"approval-decision:{current_step.id}",
+        )
+    _queue_approval_action_notifications(db, approval_request, steps)
+
     try:
         db.commit()
     except Exception:
@@ -4756,6 +4956,19 @@ def update_purchase_request_status(
         )
     )
 
+    if purchase_request.requested_by != current_user.id:
+        _queue_notifications(
+            db,
+            company_id=membership.company_id,
+            recipient_ids=[purchase_request.requested_by],
+            event_type="PURCHASE_REQUEST_STATUS_CHANGED",
+            title="Satınalma sorğusunun statusu dəyişdi",
+            body=f"Satınalma sorğusu {purchase_request.request_number}: {current_status} → {new_status}.",
+            source_entity_type="PURCHASE_REQUEST",
+            source_entity_id=purchase_request.id,
+            source_event_key=f"purchase-request-status:{purchase_request.id}:{current_status}:{new_status}",
+        )
+
     db.commit()
     db.refresh(purchase_request)
 
@@ -4869,6 +5082,19 @@ def update_purchase_order_status(
                 purchase_request.status = "CLOSED"
                 purchase_request.updated_at = datetime.now(timezone.utc)
 
+                if purchase_request.requested_by != current_user.id:
+                    _queue_notifications(
+                        db,
+                        company_id=membership.company_id,
+                        recipient_ids=[purchase_request.requested_by],
+                        event_type="PURCHASE_REQUEST_STATUS_CHANGED",
+                        title="Satınalma sorğusunun statusu dəyişdi",
+                        body=f"Satınalma sorğusu {purchase_request.request_number}: {purchase_request_old_status} → CLOSED.",
+                        source_entity_type="PURCHASE_REQUEST",
+                        source_entity_id=purchase_request.id,
+                        source_event_key=f"purchase-request-status:{purchase_request.id}:{purchase_request_old_status}:CLOSED",
+                    )
+
                 db.add(
                     AuditLog(
                         user_id=current_user.id,
@@ -4894,6 +5120,19 @@ def update_purchase_order_status(
             entity_type="purchase_order",
             entity_id=purchase_order.id,
         )
+    )
+
+    _queue_role_notifications(
+        db,
+        company_id=membership.company_id,
+        roles={"OWNER", "ADMIN", "PROCUREMENT"},
+        event_type="PURCHASE_ORDER_STATUS_CHANGED",
+        title="Purchase Order statusu dəyişdi",
+        body=f"Sifariş {purchase_order.order_number}: {current_status} → {new_status}.",
+        source_entity_type="PURCHASE_ORDER",
+        source_entity_id=purchase_order.id,
+        source_event_key=f"purchase-order-status:{purchase_order.id}:{current_status}:{new_status}",
+        exclude_user_id=current_user.id,
     )
 
     db.commit()
@@ -6083,6 +6322,19 @@ def update_delivery_status(
         )
     )
 
+    _queue_role_notifications(
+        db,
+        company_id=membership.company_id,
+        roles={"OWNER", "ADMIN", "PROCUREMENT"},
+        event_type="DELIVERY_STATUS_CHANGED",
+        title="Çatdırılmanın statusu dəyişdi",
+        body=f"Çatdırılma {delivery.delivery_number}: {current_status} → {new_status}.",
+        source_entity_type="DELIVERY",
+        source_entity_id=delivery.id,
+        source_event_key=f"delivery-status:{delivery.id}:{current_status}:{new_status}",
+        exclude_user_id=current_user.id,
+    )
+
     try:
         db.commit()
         db.refresh(delivery)
@@ -6336,6 +6588,19 @@ def update_payment_status(
                 "currency": payment.currency,
             },
         )
+    )
+
+    _queue_role_notifications(
+        db,
+        company_id=membership.company_id,
+        roles={"OWNER", "ADMIN", "FINANCE", "PROCUREMENT"},
+        event_type="PAYMENT_STATUS_CHANGED",
+        title="Ödənişin statusu dəyişdi",
+        body=f"Ödəniş statusu dəyişdi: {current_status} → {new_status}.",
+        source_entity_type="PAYMENT",
+        source_entity_id=payment.id,
+        source_event_key=f"payment-status:{payment.id}:{current_status}:{new_status}",
+        exclude_user_id=current_user.id,
     )
 
     db.commit()
@@ -7294,4 +7559,164 @@ def update_purchase_order_review(
             ) from exc
 
     return review_response(review)
+
+
+# ============================================================
+# BASIC NOTIFICATIONS — tenant-scoped in-app inbox
+# ============================================================
+
+class NotificationResponseSchema(BaseModel):
+    id: uuid.UUID
+    event_type: str
+    title: str
+    body: str
+    source_entity_type: str
+    source_entity_id: uuid.UUID
+    created_at: datetime
+    read_at: datetime | None
+
+
+class NotificationListResponseSchema(BaseModel):
+    items: list[NotificationResponseSchema]
+    total: int
+    page: int
+    limit: int
+    pages: int
+
+
+class NotificationUnreadCountResponseSchema(BaseModel):
+    count: int
+
+
+def notification_response(notification: Notification) -> dict:
+    return {
+        "id": notification.id,
+        "event_type": notification.event_type,
+        "title": notification.title,
+        "body": notification.body,
+        "source_entity_type": notification.source_entity_type,
+        "source_entity_id": notification.source_entity_id,
+        "created_at": notification.created_at,
+        "read_at": notification.read_at,
+    }
+
+
+@app.get(
+    "/api/v1/notifications",
+    response_model=NotificationListResponseSchema,
+    tags=["notifications"],
+)
+@limiter.limit("60/minute")
+def list_notifications(
+    request: Request,
+    page: int = Query(1, ge=1),
+    limit: int = Query(20, ge=1, le=100),
+    unread_only: bool = Query(False),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+    conditions = [
+        Notification.company_id == membership.company_id,
+        Notification.recipient_user_id == current_user.id,
+    ]
+    if unread_only:
+        conditions.append(Notification.read_at.is_(None))
+
+    total = db.scalar(
+        select(func.count(Notification.id)).where(*conditions)
+    ) or 0
+    pages = (total + limit - 1) // limit if total else 0
+
+    notifications = db.scalars(
+        select(Notification)
+        .where(*conditions)
+        .order_by(Notification.created_at.desc(), Notification.id.desc())
+        .offset((page - 1) * limit)
+        .limit(limit)
+    ).all()
+
+    return NotificationListResponseSchema(
+        items=[notification_response(item) for item in notifications],
+        total=total,
+        page=page,
+        limit=limit,
+        pages=pages,
+    )
+
+
+@app.get(
+    "/api/v1/notifications/unread-count",
+    response_model=NotificationUnreadCountResponseSchema,
+    tags=["notifications"],
+)
+@limiter.limit("60/minute")
+def get_notification_unread_count(
+    request: Request,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+    count_value = db.scalar(
+        select(func.count(Notification.id)).where(
+            Notification.company_id == membership.company_id,
+            Notification.recipient_user_id == current_user.id,
+            Notification.read_at.is_(None),
+        )
+    ) or 0
+    return NotificationUnreadCountResponseSchema(count=int(count_value))
+
+
+@app.patch(
+    "/api/v1/notifications/{notification_id}/read",
+    response_model=NotificationResponseSchema,
+    tags=["notifications"],
+)
+@limiter.limit("60/minute")
+def mark_notification_as_read(
+    request: Request,
+    notification_id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    membership = get_current_membership(current_user, db)
+    notification = db.scalar(
+        select(Notification)
+        .where(
+            Notification.id == notification_id,
+            Notification.company_id == membership.company_id,
+            Notification.recipient_user_id == current_user.id,
+        )
+        .with_for_update()
+    )
+    if notification is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Bildiriş tapılmadı.",
+        )
+
+    if notification.read_at is None:
+        notification.read_at = datetime.now(timezone.utc)
+        db.add(
+            AuditLog(
+                user_id=current_user.id,
+                company_id=membership.company_id,
+                action="NOTIFICATION_MARKED_READ",
+                entity_type="notification",
+                entity_id=notification.id,
+                log_metadata={
+                    "event_type": notification.event_type,
+                    "source_entity_type": notification.source_entity_type,
+                    "source_entity_id": str(notification.source_entity_id),
+                },
+            )
+        )
+        try:
+            db.commit()
+            db.refresh(notification)
+        except Exception:
+            db.rollback()
+            raise
+
+    return notification_response(notification)
 

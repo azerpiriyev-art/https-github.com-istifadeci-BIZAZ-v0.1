@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 
-const API_URL = "http://127.0.0.1:8001";
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://127.0.0.1:8001";
 const TOKEN_KEY = "bizaz_token";
 
 type CompanyData = {
@@ -44,7 +44,7 @@ export default function CompanyPage() {
   const [vatRegistered, setVatRegistered] = useState(false);
   const [vatRate, setVatRate] = useState("18");
 
-  const loadCompany = async () => {
+  const loadCompany = useCallback(async () => {
     const token = localStorage.getItem(TOKEN_KEY);
 
     if (!token) {
@@ -106,11 +106,11 @@ export default function CompanyPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [router]);
 
   useEffect(() => {
     loadCompany();
-  }, [router]);
+  }, [loadCompany]);
 
   const startEditing = () => {
     if (!company) return;

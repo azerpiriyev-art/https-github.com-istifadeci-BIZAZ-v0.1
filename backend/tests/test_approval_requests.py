@@ -546,6 +546,37 @@ def _get_approval_steps(db, approval_id):
     ).fetchall()
 
 
+def _get_approval_action_notification_count(db, approval_id, step_order):
+    step = db.execute(
+        """
+        SELECT id
+        FROM approval_steps
+        WHERE approval_request_id = %s
+          AND step_order = %s
+        """,
+        (uuid.UUID(approval_id), step_order),
+    ).fetchone()
+
+    assert step is not None, (
+        f"Approval step {step_order} not found for request {approval_id}"
+    )
+
+    return db.execute(
+        """
+        SELECT count(*)
+        FROM notifications
+        WHERE source_entity_type = 'APPROVAL_REQUEST'
+          AND source_entity_id = %s
+          AND event_type = 'APPROVAL_ACTION_REQUIRED'
+          AND source_event_key = %s
+        """,
+        (
+            uuid.UUID(approval_id),
+            f"approval-action:{step[0]}",
+        ),
+    ).fetchone()[0]
+
+
 def _decision(base_url, auth_headers, approval_id, decision, comment):
     return requests.post(
         f"{base_url}/api/v1/approvals/{approval_id}/decision",
@@ -583,6 +614,9 @@ def test_12_sequential_multi_step_progression(
         assert response.status_code == 201, response.text
         approval_id = response.json()["id"]
 
+        assert _get_approval_action_notification_count(db, approval_id, 1) > 0
+        assert _get_approval_action_notification_count(db, approval_id, 2) == 0
+
         first = _decision(
             base_url,
             auth_headers,
@@ -596,6 +630,7 @@ def test_12_sequential_multi_step_progression(
 
         steps = _get_approval_steps(db, approval_id)
         assert steps == [(1, "APPROVED"), (2, "PENDING")]
+        assert _get_approval_action_notification_count(db, approval_id, 2) > 0
 
         second = _decision(
             base_url,
@@ -612,7 +647,17 @@ def test_12_sequential_multi_step_progression(
         assert steps == [(1, "APPROVED"), (2, "APPROVED")]
 
     finally:
+        if "approval_id" in locals():
+            db.execute(
+                """
+                DELETE FROM notifications
+                WHERE source_entity_type = 'APPROVAL_REQUEST'
+                  AND source_entity_id = %s
+                """,
+                (uuid.UUID(approval_id),),
+            )
         _cleanup_approval(db, request_id)
+        db.commit()
         db.close()
 
 
@@ -641,6 +686,9 @@ def test_13_sequential_reject_skips_remaining_steps(
         assert response.status_code == 201, response.text
         approval_id = response.json()["id"]
 
+        assert _get_approval_action_notification_count(db, approval_id, 1) > 0
+        assert _get_approval_action_notification_count(db, approval_id, 2) == 0
+
         rejected = _decision(
             base_url,
             auth_headers,
@@ -654,6 +702,7 @@ def test_13_sequential_reject_skips_remaining_steps(
 
         steps = _get_approval_steps(db, approval_id)
         assert steps == [(1, "REJECTED"), (2, "SKIPPED")]
+        assert _get_approval_action_notification_count(db, approval_id, 2) == 0
 
         second = _decision(
             base_url,
@@ -665,7 +714,17 @@ def test_13_sequential_reject_skips_remaining_steps(
         assert second.status_code == 409, second.text
 
     finally:
+        if "approval_id" in locals():
+            db.execute(
+                """
+                DELETE FROM notifications
+                WHERE source_entity_type = 'APPROVAL_REQUEST'
+                  AND source_entity_id = %s
+                """,
+                (uuid.UUID(approval_id),),
+            )
         _cleanup_approval(db, request_id)
+        db.commit()
         db.close()
 
 
