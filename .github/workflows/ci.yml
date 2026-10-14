@@ -1,4 +1,4 @@
-﻿name: BIZAZ CI
+name: BIZAZ CI
 
 on:
   push:
@@ -328,3 +328,17 @@ jobs:
           if git grep -nE -e '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' -- ':!*.example'; then
             exit 1
           fi
+
+  production-containers:
+    name: Production container build (ARM64) and Compose validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Validate production Compose configuration
+        run: docker compose --env-file .env.production.example -f docker-compose.prod.yml config --quiet
+      - name: Build backend image for Oracle Cloud ARM64
+        run: docker buildx build --platform linux/arm64 --file backend/Dockerfile --tag bizaz-api:ci --output=type=oci,dest=/tmp/bizaz-api.oci.tar .
+      - name: Build frontend image for Oracle Cloud ARM64
+        run: docker buildx build --platform linux/arm64 --file frontend/Dockerfile --tag bizaz-web:ci --build-arg NEXT_PUBLIC_API_URL= --output=type=oci,dest=/tmp/bizaz-web.oci.tar ./frontend

@@ -1,0 +1,16 @@
+.git
+.env
+.env.*
+!.env.production.example
+**/venv/
+**/.venv/
+**/__pycache__/
+**/.pytest_cache/
+**/node_modules/
+**/.next/
+backups/
+backup-logs/
+backup-monitoring/
+backend/_audit_archive/
+backend/audit_*.py
+backend/_audit_collection_*.txt

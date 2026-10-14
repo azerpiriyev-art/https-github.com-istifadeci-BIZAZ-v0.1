@@ -1,0 +1,148 @@
+name: bizaz-production
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      BIZAZ_APP_USER: ${BIZAZ_APP_USER:?Set BIZAZ_APP_USER in .env.production}
+      BIZAZ_APP_PASSWORD: ${BIZAZ_APP_PASSWORD:?Set BIZAZ_APP_PASSWORD in .env.production}
+    volumes:
+      - bizaz_pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres-init/010-create-app-role.sh:/docker-entrypoint-initdb.d/010-create-app-role.sh:ro
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    networks:
+      - database
+    stop_grace_period: 1m
+
+  bootstrap-schema:
+    image: postgres:16-alpine
+    profiles: ["bootstrap"]
+    restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env.production}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+      BIZAZ_APP_USER: ${BIZAZ_APP_USER:?Set BIZAZ_APP_USER in .env.production}
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env.production}
+    volumes:
+      - ./db/migrations:/migrations:ro
+    entrypoint: ["/bin/sh", "-ec"]
+    command: |
+      until pg_isready -h db -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"; do sleep 2; done
+      existing_tables=$(psql -h db -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -Atqc "SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_type = 'BASE TABLE'")
+      if [ "$${existing_tables}" -ne 0 ]; then
+        echo "Refusing initial bootstrap: public schema is not empty." >&2
+        exit 2
+      fi
+      for migration in /migrations/*.sql; do
+        echo "Applying initial schema: $${migration##*/}"
+        psql -h db -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" -v ON_ERROR_STOP=1 -f "$${migration}"
+      done
+      psql -h db -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}" \
+        -v ON_ERROR_STOP=1 \
+        --set=app_user="$$BIZAZ_APP_USER" \
+        --set=admin_user="$$POSTGRES_USER" <<'SQL'
+      GRANT USAGE ON SCHEMA public TO :"app_user";
+      GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO :"app_user";
+      GRANT USAGE, SELECT, UPDATE ON ALL SEQUENCES IN SCHEMA public TO :"app_user";
+      ALTER DEFAULT PRIVILEGES FOR ROLE :"admin_user" IN SCHEMA public
+        GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO :"app_user";
+      ALTER DEFAULT PRIVILEGES FOR ROLE :"admin_user" IN SCHEMA public
+        GRANT USAGE, SELECT, UPDATE ON SEQUENCES TO :"app_user";
+      SQL
+    networks:
+      - database
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+psycopg://${BIZAZ_APP_USER:?Set BIZAZ_APP_USER in .env.production}:${BIZAZ_APP_PASSWORD:?Set BIZAZ_APP_PASSWORD in .env.production}@db:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env.production}
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.production}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-30}
+      CORS_ORIGINS: ${CORS_ORIGINS:?Set CORS_ORIGINS in .env.production}
+      BIZAZ_TEST_MODE: "false"
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3).read()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - edge
+      - database
+    stop_grace_period: 30s
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-}
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+    expose:
+      - "3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - edge
+    stop_grace_period: 30s
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      BIZAZ_DOMAIN: ${BIZAZ_DOMAIN:?Set BIZAZ_DOMAIN in .env.production}
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_healthy
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    stop_grace_period: 30s
+
+volumes:
+  bizaz_pgdata:
+  caddy_data:
+  caddy_config:
+
+networks:
+  edge:
+  database:
+    internal: true
