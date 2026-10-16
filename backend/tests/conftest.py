@@ -1,6 +1,7 @@
 import os
 import uuid
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urlsplit
 
 import pytest
 import requests
@@ -43,37 +44,38 @@ def auth_headers(base_url, test_credentials):
     }
 
 
-@pytest.fixture(scope="session")
-def test_database_url():
-    ci_database_url = os.getenv("BIZAZ_TEST_DATABASE_URL")
+def _resolve_test_database_url():
+    override = os.getenv("BIZAZ_TEST_DATABASE_URL")
 
-    if ci_database_url:
-        return ci_database_url.replace(
-            "postgresql+psycopg://", "postgresql://"
+    if not override or not override.strip():
+        raise AssertionError(
+            "BIZAZ_TEST_DATABASE_URL must be set to the dedicated "
+            "test-runner URL; refusing fallback to root .env"
         )
 
-    root_env = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", ".env")
+    candidate = override.strip().replace(
+        "postgresql+psycopg://", "postgresql://", 1
     )
+    parsed = urlsplit(candidate)
 
-    database_url = None
+    if (
+        parsed.scheme not in ("postgresql", "postgres")
+        or not parsed.hostname
+        or parsed.username != "bizaz_test_runner"
+        or parsed.path.lstrip("/") != "bizaz_procurement_test"
+    ):
+        raise AssertionError(
+            "Test connection must use role bizaz_test_runner "
+            "and database bizaz_procurement_test; connection refused"
+        )
 
-    with open(root_env, "r", encoding="utf-8") as env_file:
-        for line in env_file:
-            line = line.strip()
-            if line.startswith("DATABASE_URL="):
-                database_url = line.split("=", 1)[1].strip()
-                break
+    return candidate
 
-    assert database_url, "DATABASE_URL not found in root .env"
 
-    assert database_url.endswith("/bizaz"), (
-        "Expected production database URL ending with /bizaz"
-    )
+@pytest.fixture(scope="session")
+def test_database_url():
+    return _resolve_test_database_url()
 
-    return (database_url[:-5] + "bizaz_procurement_test").replace(
-        "postgresql+psycopg://", "postgresql://"
-    )
 
 @pytest.fixture(scope="session")
 def test_db(test_database_url):
@@ -415,8 +417,7 @@ def purchase_request_lifecycle_fixture(
     request_id = uuid.UUID(data["id"])
 
     cleanup_db = psycopg.connect(
-        os.getenv("BIZAZ_TEST_DATABASE_URL", "")
-        or _database_url_from_env()
+        _database_url_from_env()
     )
     cleanup_db.autocommit = True
 
@@ -546,8 +547,7 @@ def comparison_fixture(base_url, auth_headers, test_company_data, test_db):
     request_id_uuid = uuid.UUID(request_id)
 
     test_db = psycopg.connect(
-        os.getenv("BIZAZ_TEST_DATABASE_URL", "")
-        or _database_url_from_env()
+        _database_url_from_env()
     )
     test_db.autocommit = True
 
@@ -870,21 +870,7 @@ def purchase_request_po_lifecycle_fixture(
         connection.close()
 
 def _database_url_from_env():
-    root_env = os.path.abspath(
-        os.path.join(os.path.dirname(__file__), "..", "..", ".env")
-    )
-
-    with open(root_env, "r", encoding="utf-8") as env_file:
-        for line in env_file:
-            line = line.strip()
-
-            if line.startswith("DATABASE_URL="):
-                database_url = line.split("=", 1)[1].strip()
-
-                if database_url.endswith("/bizaz"):
-                    return (database_url[:-5] + "bizaz_procurement_test").replace("postgresql+psycopg://", "postgresql://")
-
-    raise AssertionError("DATABASE_URL not found")
+    return _resolve_test_database_url()
 
 
 @pytest.fixture(scope="function")

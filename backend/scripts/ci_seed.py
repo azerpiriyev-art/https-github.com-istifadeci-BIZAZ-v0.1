@@ -1,4 +1,5 @@
 ﻿import os
+from urllib.parse import urlparse
 from uuid import UUID
 from decimal import Decimal
 from pwdlib import PasswordHash
@@ -19,11 +20,18 @@ if not DSN:
     )
 
 
-# Safety: CI seed must never target production database.
-db_name = DSN.rsplit("/", 1)[-1].split("?", 1)[0]
-if not db_name.endswith("_test"):
+# Safety: permit only the dedicated CI test role and database.
+parsed_dsn = urlparse(DSN)
+db_name = parsed_dsn.path.lstrip("/").split("?", 1)[0]
+
+if (
+    parsed_dsn.scheme not in ("postgres", "postgresql")
+    or parsed_dsn.username != "bizaz_test_runner"
+    or db_name != "bizaz_procurement_test"
+):
     raise RuntimeError(
-        f"CI seed blocked for non-test database: {db_name}"
+        "CI seed blocked: expected role bizaz_test_runner "
+        "and database bizaz_procurement_test"
     )
 
 

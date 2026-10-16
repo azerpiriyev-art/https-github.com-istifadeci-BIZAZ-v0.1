@@ -1,0 +1,32 @@
+#!/bin/sh
+set -eu
+
+: "${BIZAZ_DB_APP_PASSWORD:?BIZAZ_DB_APP_PASSWORD is required}"
+: "${BIZAZ_DB_MIGRATOR_PASSWORD:?BIZAZ_DB_MIGRATOR_PASSWORD is required}"
+
+psql \
+  --username "$POSTGRES_USER" \
+  --dbname "$POSTGRES_DB" \
+  --set=ON_ERROR_STOP=1 \
+  --set=app_password="$BIZAZ_DB_APP_PASSWORD" \
+  --set=migrator_password="$BIZAZ_DB_MIGRATOR_PASSWORD" <<'SQL'
+CREATE ROLE bizaz_migrator LOGIN PASSWORD :'migrator_password';
+CREATE ROLE bizaz_app LOGIN PASSWORD :'app_password';
+
+GRANT CONNECT, CREATE ON DATABASE bizaz TO bizaz_migrator;
+GRANT CONNECT ON DATABASE bizaz TO bizaz_app;
+
+ALTER SCHEMA public OWNER TO bizaz_migrator;
+GRANT USAGE ON SCHEMA public TO bizaz_app;
+
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO bizaz_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA public TO bizaz_app;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA public TO bizaz_app;
+
+ALTER DEFAULT PRIVILEGES FOR ROLE bizaz_migrator IN SCHEMA public
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO bizaz_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE bizaz_migrator IN SCHEMA public
+  GRANT USAGE, SELECT ON SEQUENCES TO bizaz_app;
+ALTER DEFAULT PRIVILEGES FOR ROLE bizaz_migrator IN SCHEMA public
+  GRANT EXECUTE ON FUNCTIONS TO bizaz_app;
+SQL
