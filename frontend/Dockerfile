@@ -1,18 +1,24 @@
-FROM node:24-alpine AS deps
+# Install production dependencies for the target runtime architecture.
+# This stage may use QEMU on an ARM64 CI runner, but does not run next build.
+FROM --platform=$TARGETPLATFORM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --omit=dev
 
-FROM node:24-alpine AS builder
+# Compile Next.js on the native BuildKit architecture. The ARM64-emulated
+# Next.js/SWC build worker can SIGILL under QEMU, so never run next build here.
+FROM --platform=$BUILDPLATFORM node:24-alpine AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
-COPY --from=deps /app/node_modules ./node_modules
+COPY package.json package-lock.json ./
+RUN npm ci
 COPY . .
 ARG NEXT_PUBLIC_API_URL=""
 ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
 RUN npm run build
 
-FROM node:24-alpine AS runner
+# Runtime base and installed production dependencies match TARGETPLATFORM.
+FROM --platform=$TARGETPLATFORM node:24-alpine AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
@@ -24,6 +30,11 @@ RUN addgroup -S -g 1001 nodejs \
 
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
+
+# The standalone build contains build-platform node_modules. Replace them with
+# the target-platform production dependencies before switching to the app user.
+RUN rm -rf ./node_modules
+COPY --from=deps --chown=nextjs:nodejs /app/node_modules ./node_modules
 
 USER nextjs
 EXPOSE 3000
