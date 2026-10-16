@@ -163,6 +163,90 @@ jobs:
           trigger_count=$(docker exec -e PGPASSWORD=bizaz_ci_password bizaz-ci-postgres psql -U bizaz_ci -d bizaz_ci -Atqc "SELECT count(*) FROM pg_trigger WHERE NOT tgisinternal AND tgname IN ('trg_validate_payment_purchase_order','trg_validate_payment_state','trg_validate_purchase_order_state','trg_validate_delivery_state');")
           test "$trigger_count" = "4"
 
+  production-migration-runner:
+    name: Production migration runner (least privilege)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Exercise production migration runner with restricted roles
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          export POSTGRES_ADMIN_PASSWORD="$(openssl rand -hex 32)"
+          export BIZAZ_DB_APP_PASSWORD="$(openssl rand -hex 32)"
+          export BIZAZ_DB_MIGRATOR_PASSWORD="$(openssl rand -hex 32)"
+          export JWT_SECRET="$(openssl rand -hex 64)"
+          echo "::add-mask::$POSTGRES_ADMIN_PASSWORD"
+          echo "::add-mask::$BIZAZ_DB_APP_PASSWORD"
+          echo "::add-mask::$BIZAZ_DB_MIGRATOR_PASSWORD"
+          echo "::add-mask::$JWT_SECRET"
+
+          cat > .env.production <<EOF
+          BIZAZ_DOMAIN=localhost
+          BIZAZ_PUBLIC_ORIGIN=http://localhost
+          POSTGRES_ADMIN_PASSWORD=$POSTGRES_ADMIN_PASSWORD
+          BIZAZ_DB_APP_PASSWORD=$BIZAZ_DB_APP_PASSWORD
+          BIZAZ_DB_MIGRATOR_PASSWORD=$BIZAZ_DB_MIGRATOR_PASSWORD
+          JWT_SECRET=$JWT_SECRET
+          JWT_EXPIRE_MINUTES=30
+          EOF
+          chmod 600 .env.production
+
+          cleanup() {
+            docker compose --env-file .env.production -f compose.production.yml down --volumes --remove-orphans >/dev/null 2>&1 || true
+            rm -f .env.production
+          }
+          trap cleanup EXIT
+
+          docker compose --env-file .env.production -f compose.production.yml up -d db
+
+          ready=0
+          for attempt in {1..30}; do
+            if docker compose --env-file .env.production -f compose.production.yml exec -T db pg_isready -U bizaz_admin -d bizaz >/dev/null 2>&1; then
+              ready=1
+              break
+            fi
+            sleep 2
+          done
+          if [ "$ready" -ne 1 ]; then
+            docker compose --env-file .env.production -f compose.production.yml logs db
+            exit 1
+          fi
+
+          migration_count="$(find db/migrations -maxdepth 1 -type f -name '*.sql' | wc -l | tr -d '[:space:]')"
+          test "$migration_count" -gt 0
+
+          first_run="$(docker compose --env-file .env.production -f compose.production.yml --profile tools run --rm migrate)"
+          printf '%s\n' "$first_run"
+          applied_count="$(printf '%s\n' "$first_run" | grep -c '^APPLY ' || true)"
+          test "$applied_count" -eq "$migration_count"
+
+          second_run="$(docker compose --env-file .env.production -f compose.production.yml --profile tools run --rm migrate)"
+          printf '%s\n' "$second_run"
+          skipped_count="$(printf '%s\n' "$second_run" | grep -c '^SKIP  ' || true)"
+          reapplied_count="$(printf '%s\n' "$second_run" | grep -c '^APPLY ' || true)"
+          test "$skipped_count" -eq "$migration_count"
+          test "$reapplied_count" -eq 0
+
+          ledger_count="$(docker compose --env-file .env.production -f compose.production.yml exec -T db psql -U bizaz_admin -d bizaz -Atqc 'SELECT count(*) FROM public.schema_migrations;')"
+          test "$ledger_count" -eq "$migration_count"
+
+          docker compose --env-file .env.production -f compose.production.yml exec -T -e "PGPASSWORD=$BIZAZ_DB_APP_PASSWORD" db psql -h 127.0.0.1 -U bizaz_app -d bizaz -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.users;' >/dev/null
+
+          if docker compose --env-file .env.production -f compose.production.yml exec -T -e "PGPASSWORD=$BIZAZ_DB_APP_PASSWORD" db psql -h 127.0.0.1 -U bizaz_app -d bizaz -v ON_ERROR_STOP=1 -c 'SELECT count(*) FROM public.schema_migrations;' >/tmp/bizaz-app-ledger-test.log 2>&1; then
+            echo "ERROR: bizaz_app unexpectedly has access to schema_migrations."
+            exit 1
+          fi
+          if ! grep -Eqi 'permission denied.*schema_migrations|permission denied for table schema_migrations' /tmp/bizaz-app-ledger-test.log; then
+            cat /tmp/bizaz-app-ledger-test.log
+            echo "ERROR: access to schema_migrations failed for an unexpected reason."
+            exit 1
+          fi
+
+          echo "PASS: migrations applied as bizaz_migrator, rerun skipped all files, and bizaz_app cannot read the migration journal."
+
   frontend-build:
     name: Frontend production build
     runs-on: ubuntu-latest
