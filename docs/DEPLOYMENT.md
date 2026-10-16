@@ -67,6 +67,8 @@ Inspect service status:
 
     docker compose --env-file .env.production -f compose.production.yml ps
 
+Wait for the database, backend, and frontend services to become healthy. The backend container's internal health check calls `/ready`, which executes a database query using the application connection. The public `/health` endpoint is a liveness check only; it does not prove database readiness.
+
 Inspect recent logs when required:
 
     docker compose --env-file .env.production -f compose.production.yml logs --tail=100 db backend frontend caddy
