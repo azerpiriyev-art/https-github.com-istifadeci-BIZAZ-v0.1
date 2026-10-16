@@ -41,6 +41,7 @@ services:
       JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-30}
       CORS_ORIGINS: ${BIZAZ_PUBLIC_ORIGIN:?Set BIZAZ_PUBLIC_ORIGIN in .env.production}
       BIZAZ_TEST_MODE: "false"
+      FORWARDED_ALLOW_IPS: ${BIZAZ_CADDY_IP:-172.30.240.2}
     depends_on:
       db:
         condition: service_healthy
@@ -84,7 +85,8 @@ services:
       frontend:
         condition: service_healthy
     networks:
-      - proxy
+      proxy:
+        ipv4_address: ${BIZAZ_CADDY_IP:-172.30.240.2}
     stop_grace_period: 30s
     logging: *default-logging
 
@@ -113,6 +115,9 @@ services:
 networks:
   proxy:
     name: bizaz-production-proxy
+    ipam:
+      config:
+        - subnet: ${BIZAZ_PROXY_SUBNET:-172.30.240.0/24}
   data:
     name: bizaz-production-data
     internal: true
