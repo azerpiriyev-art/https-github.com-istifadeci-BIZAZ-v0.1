@@ -369,6 +369,6 @@ jobs:
       - name: Validate production Compose configuration
         run: docker compose --env-file deploy/production.env.example -f compose.production.yml config --quiet
       - name: Build backend image for Oracle Cloud ARM64
-        run: docker buildx build --platform linux/arm64 --file Dockerfile --tag bizaz-backend:ci --output=type=oci,dest=/tmp/bizaz-backend.oci.tar ./backend
+        run: docker buildx build --platform linux/arm64 --file backend/Dockerfile --tag bizaz-backend:ci --output=type=oci,dest=/tmp/bizaz-backend.oci.tar ./backend
       - name: Build frontend image for Oracle Cloud ARM64
-        run: docker buildx build --platform linux/arm64 --file Dockerfile --tag bizaz-frontend:ci --build-arg NEXT_PUBLIC_API_URL= --output=type=oci,dest=/tmp/bizaz-frontend.oci.tar ./frontend
+        run: docker buildx build --platform linux/arm64 --file frontend/Dockerfile --tag bizaz-frontend:ci --build-arg NEXT_PUBLIC_API_URL= --output=type=oci,dest=/tmp/bizaz-frontend.oci.tar ./frontend
