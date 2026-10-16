@@ -3,6 +3,7 @@ node_modules/
 .git/
 .env
 .env.*
+!.env.example
 *.log
 coverage/
 .nyc_output/

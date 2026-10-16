@@ -358,3 +358,17 @@ jobs:
           if git grep -nE -e '-----BEGIN (RSA |EC |OPENSSH )?PRIVATE KEY-----' -- ':!*.example'; then
             exit 1
           fi
+
+  production-containers:
+    name: Production container build (ARM64) and Compose validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+      - name: Validate production Compose configuration
+        run: docker compose --env-file deploy/production.env.example -f compose.production.yml config --quiet
+      - name: Build backend image for Oracle Cloud ARM64
+        run: docker buildx build --platform linux/arm64 --file Dockerfile --tag bizaz-backend:ci --output=type=oci,dest=/tmp/bizaz-backend.oci.tar ./backend
+      - name: Build frontend image for Oracle Cloud ARM64
+        run: docker buildx build --platform linux/arm64 --file Dockerfile --tag bizaz-frontend:ci --build-arg NEXT_PUBLIC_API_URL= --output=type=oci,dest=/tmp/bizaz-frontend.oci.tar ./frontend

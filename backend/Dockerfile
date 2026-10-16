@@ -10,8 +10,8 @@ RUN groupadd --system bizaz \
     && useradd --system --gid bizaz --home-dir /app \
        --shell /usr/sbin/nologin bizaz
 
-COPY requirements.txt ./requirements.txt
-RUN python -m pip install --no-cache-dir -r requirements.txt
+COPY requirements-prod.txt ./requirements-prod.txt
+RUN python -m pip install --no-cache-dir -r requirements-prod.txt
 
 COPY --chown=bizaz:bizaz app/ ./app/
 COPY --chown=bizaz:bizaz scripts/ ./scripts/

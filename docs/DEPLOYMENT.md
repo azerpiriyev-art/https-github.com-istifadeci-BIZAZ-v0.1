@@ -114,3 +114,10 @@ Do not approve production until all applicable checks have been completed:
 - Logs, failure detection, and recovery procedures are documented and tested.
 
 Passing local image builds and Compose configuration checks alone does not establish production readiness.
+## 11. ARM64 pilot and notification retention
+
+For the controlled Oracle Cloud ARM64 pilot, use [FREE-TIER-DEPLOYMENT.md](FREE-TIER-DEPLOYMENT.md). Its commands must follow this runbook's canonical `compose.production.yml` configuration and `deploy/production.env.example`.
+
+The 180-day notification purge task is not configured automatically by Compose. After deployment and successful backup/restore verification, follow [BASIC-NOTIFICATIONS-OPERATIONS.md](BASIC-NOTIFICATIONS-OPERATIONS.md), update the scheduled command to the deployed path, and verify its exit code, logs, and deleted-row count.
+
+Do not claim production readiness until the host, TLS, backups, restore, monitoring, and scheduled task are verified.
