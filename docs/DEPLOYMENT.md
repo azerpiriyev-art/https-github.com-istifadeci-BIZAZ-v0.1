@@ -39,6 +39,12 @@ On the deployment server, run:
 
 Do not start production services if validation fails. Verify the domain and configuration values first.
 
+## 4.1 Trusted proxy headers and rate limiting
+
+The API rate limiter uses the client IP address, so Uvicorn must trust forwarded headers only from the Caddy reverse proxy. The Compose file assigns Caddy a static address on the configured proxy subnet and sets `FORWARDED_ALLOW_IPS` to that exact address. Do not replace this allowlist with `*`.
+
+Before deployment, confirm that `BIZAZ_PROXY_SUBNET` does not overlap with the host, VPN, or VCN routes and that `BIZAZ_CADDY_IP` is inside that subnet. If either value changes, keep the Compose network, Caddy address, and Uvicorn trust setting consistent.
+
 ## 5. Apply database migrations before starting the application
 
 The migration service belongs to the tools profile and is not run by a normal docker compose up command.
