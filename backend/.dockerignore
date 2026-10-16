@@ -1,0 +1,14 @@
+venv/
+.venv/
+__pycache__/
+**/__pycache__/
+.pytest_cache/
+tests/
+.env
+.env.*
+*.py[cod]
+coverage.xml
+htmlcov/
+backups/
+backup-logs/
+backup-monitoring/
