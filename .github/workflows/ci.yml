@@ -331,6 +331,27 @@ jobs:
             },
           };
 
+          // Diagnostic-only output: expose the exact audit findings when the approved baseline drifts.
+          // Do not print the complete npm audit report or environment data.
+          console.error("AUDIT DIAGNOSTIC — current vulnerable dependency identities:");
+          for (const name of names) {
+            const finding = findings[name];
+            console.error(JSON.stringify({
+              name,
+              severity: finding.severity,
+              isDirect: finding.isDirect,
+              range: finding.range,
+              via: (finding.via || []).map((item) =>
+                typeof item === "string"
+                  ? { name: item }
+                  : { name: item.name, title: item.title, url: item.url, range: item.range, severity: item.severity }
+              ),
+              fixAvailable: finding.fixAvailable,
+              nodes: finding.nodes,
+            }));
+          }
+          console.error("AUDIT DIAGNOSTIC SUMMARY: " + JSON.stringify(summary));
+
           const expectedNames = Object.keys(expected).sort();
           const problems = [];
 
