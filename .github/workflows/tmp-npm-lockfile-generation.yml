@@ -1,0 +1,97 @@
+name: Temporary npm lockfile generation
+
+on:
+  push:
+    branches:
+      - security/nextjs-patch-update
+    paths:
+      - .github/workflows/tmp-npm-lockfile-generation.yml
+
+permissions:
+  contents: write
+
+concurrency:
+  group: bizaz-temp-lockfile-generation
+  cancel-in-progress: false
+
+jobs:
+  regenerate-lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout authorized branch
+        uses: actions/checkout@v4
+        with:
+          ref: security/nextjs-patch-update
+          persist-credentials: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Regenerate lockfile with npm resolver
+        working-directory: frontend
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund --prefer-online
+
+      - name: Verify package manifest was not changed
+        run: |
+          git diff --exit-code -- frontend/package.json
+          git status --short
+
+      - name: Install exactly from regenerated lockfile
+        working-directory: frontend
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Report full dependency audit findings
+        working-directory: frontend
+        shell: bash
+        run: |
+          set +e
+          npm audit --json > "$RUNNER_TEMP/npm-audit.json"
+          audit_exit=$?
+          set -e
+          node - "$RUNNER_TEMP/npm-audit.json" "$audit_exit" <<'NODE'
+          const fs = require('fs');
+          const report = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+          const meta = report.metadata?.vulnerabilities ?? {};
+          console.log('NPM_AUDIT_SUMMARY ' + JSON.stringify(meta));
+          for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
+            console.log('NPM_AUDIT_FINDING ' + JSON.stringify({
+              name,
+              severity: item.severity,
+              isDirect: item.isDirect,
+              range: item.range,
+              fixAvailable: item.fixAvailable,
+              via: (item.via ?? []).map(v => typeof v === 'string' ? {name:v} : {name:v.name,title:v.title,url:v.url,range:v.range,severity:v.severity}),
+              nodes: item.nodes
+            }));
+          }
+          console.log('NPM_AUDIT_EXIT ' + process.argv[3]);
+          NODE
+
+      - name: Verify production dependency audit
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=low
+
+      - name: Verify frontend production build
+        working-directory: frontend
+        run: npm run build
+
+      - name: Commit only package-lock.json
+        shell: bash
+        run: |
+          git add -- frontend/package-lock.json
+          if git diff --cached --quiet; then
+            echo "Lockfile is already current; no commit required."
+          else
+            git diff --cached --stat
+            git -c user.name="github-actions[bot]" -c user.email="41898282+github-actions[bot]@users.noreply.github.com" commit -m "fix(frontend): refresh dependency lockfile"
+            git push origin HEAD:security/nextjs-patch-update
+          fi
+
+      - name: Dispatch normal BIZAZ CI for the updated branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref security/nextjs-patch-update
