@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 
 export default function RegisterPage() {
   const [formData, setFormData] = useState({
+    full_name: "",
     company_name: "",
     email: "",
     password: "",
@@ -43,6 +44,20 @@ export default function RegisterPage() {
     <div style={{ maxWidth: "400px", margin: "50px auto", padding: "20px", border: "1px solid #ccc", borderRadius: "8px", fontFamily: "sans-serif" }}>
       <h2>Şirkət Qeydiyyatı</h2>
       <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "15px", marginTop: "20px" }}>
+        <div>
+          <label style={{ display: "block", marginBottom: "5px" }}>Ad və soyad:</label>
+          <input
+            type="text"
+            required
+            minLength={2}
+            maxLength={255}
+            autoComplete="name"
+            value={formData.full_name}
+            onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+            style={{ width: "100%", padding: "8px", boxSizing: "border-box" }}
+          />
+        </div>
+
         <div>
           <label style={{ display: "block", marginBottom: "5px" }}>Şirkət Adı:</label>
           <input

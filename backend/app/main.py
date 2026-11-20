@@ -12,7 +12,7 @@ from pwdlib import PasswordHash
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.util import get_remote_address
-from sqlalchemy.exc import DataError, IntegrityError
+from sqlalchemy.exc import DataError, IntegrityError, SQLAlchemyError
 from sqlalchemy import select, func, or_
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
@@ -322,12 +322,34 @@ class DeliveryListResponseSchema(BaseModel):
 )
 @limiter.limit("30/minute")
 def health(request: Request):
-
+    """Liveness endpoint: confirms the API process is responding."""
     return {
         "status": "ok",
         "service": "bizaz-api",
         "version": "0.1.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+@app.get(
+    "/ready",
+    tags=["system"],
+    include_in_schema=False,
+)
+@limiter.limit("30/minute")
+def readiness(request: Request, db: Session = Depends(get_db)):
+    """Readiness endpoint: only succeeds while the database connection works."""
+    try:
+        db.execute(select(1))
+    except SQLAlchemyError:
+        raise HTTPException(
+            status_code=503,
+            detail="Database is not ready.",
+        )
+
+    return {
+        "status": "ready",
+        "service": "bizaz-api",
     }
 
 

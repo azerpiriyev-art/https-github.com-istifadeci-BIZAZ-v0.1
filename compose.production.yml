@@ -1,0 +1,131 @@
+name: bizaz-production
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bizaz
+      POSTGRES_USER: bizaz_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env.production}
+      BIZAZ_DB_APP_PASSWORD: ${BIZAZ_DB_APP_PASSWORD:?Set BIZAZ_DB_APP_PASSWORD in .env.production}
+      BIZAZ_DB_MIGRATOR_PASSWORD: ${BIZAZ_DB_MIGRATOR_PASSWORD:?Set BIZAZ_DB_MIGRATOR_PASSWORD in .env.production}
+    volumes:
+      - bizaz_pgdata:/var/lib/postgresql/data
+      - ./deploy/postgres/01-create-db-roles.sh:/docker-entrypoint-initdb.d/10-create-db-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 15s
+    networks:
+      - data
+    stop_grace_period: 60s
+    logging: *default-logging
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+psycopg://bizaz_app:${BIZAZ_DB_APP_PASSWORD:?Set BIZAZ_DB_APP_PASSWORD in .env.production}@db:5432/bizaz"
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in .env.production}
+      JWT_EXPIRE_MINUTES: ${JWT_EXPIRE_MINUTES:-30}
+      CORS_ORIGINS: ${BIZAZ_PUBLIC_ORIGIN:?Set BIZAZ_PUBLIC_ORIGIN in .env.production}
+      BIZAZ_TEST_MODE: "false"
+      FORWARDED_ALLOW_IPS: ${BIZAZ_CADDY_IP:-172.30.240.2}
+    depends_on:
+      db:
+        condition: service_healthy
+    expose:
+      - "8000"
+    networks:
+      - proxy
+      - data
+    stop_grace_period: 30s
+    logging: *default-logging
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: ""
+    restart: unless-stopped
+    expose:
+      - "3000"
+    networks:
+      - proxy
+    stop_grace_period: 30s
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      BIZAZ_DOMAIN: ${BIZAZ_DOMAIN:?Set BIZAZ_DOMAIN in .env.production}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks:
+      proxy:
+        ipv4_address: ${BIZAZ_CADDY_IP:-172.30.240.2}
+    stop_grace_period: 30s
+    logging: *default-logging
+
+  migrate:
+    image: postgres:16-alpine
+    profiles:
+      - tools
+    environment:
+      PGHOST: db
+      PGPORT: "5432"
+      PGDATABASE: bizaz
+      PGUSER: bizaz_migrator
+      PGPASSWORD: ${BIZAZ_DB_MIGRATOR_PASSWORD:?Set BIZAZ_DB_MIGRATOR_PASSWORD in .env.production}
+      PGCONNECT_TIMEOUT: "5"
+    volumes:
+      - ./db/migrations:/migrations:ro
+      - ./deploy/migrate.sh:/usr/local/bin/bizaz-migrate.sh:ro
+    entrypoint: ["/bin/sh", "/usr/local/bin/bizaz-migrate.sh"]
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - data
+    logging: *default-logging
+
+networks:
+  proxy:
+    name: bizaz-production-proxy
+    ipam:
+      config:
+        - subnet: ${BIZAZ_PROXY_SUBNET:-172.30.240.0/24}
+  data:
+    name: bizaz-production-data
+    internal: true
+
+volumes:
+  bizaz_pgdata:
+    name: bizaz-production-pgdata
+  caddy_data:
+    name: bizaz-production-caddy-data
+  caddy_config:
+    name: bizaz-production-caddy-config
