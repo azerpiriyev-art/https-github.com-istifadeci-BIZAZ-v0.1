@@ -1,9 +1,9 @@
 # BIZAZ Permanent Audit Control Protocol
 
 **Document ID:** BIZAZ-AUDIT-CONTROL-001  
-**Version:** 1.0  
+**Version:** 1.1  
 **Protocol status:** APPROVED BY PROJECT OWNER  
-**Repository integration status:** PROPOSED ON ISOLATED BRANCH; NOT MERGED  
+**Repository integration status:** MERGED INTO MASTER  
 **Audit authority:** Project Owner  
 **Audit lead:** ChatGPT (architecture, security review, QA and audit coordination)  
 **Language:** Azerbaijani for user-facing audit instructions; technical identifiers may remain English.
